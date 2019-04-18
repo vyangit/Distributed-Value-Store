@@ -1,17 +1,23 @@
 package roles;
 
-import java.net.Socket;
-
 public interface DistributedNodeInterface {
 	
 	/**
 	 * Requests to join a network when given a node in that node work
+	 * @return 
 	 */
-	public void joinNetwork(String remoteIpAddress);
+	public boolean joinNetwork(String remoteSocketAddress);
 
 	/**
-	 * Checks the heartbeat connection of a given node in the network
+	 * Establishes node's heartbeat 
 	 */
-	public void checkHeartbeat(Socket remoteConnection);
+	public boolean establishHeartbeat();
+	
+	/**
+	 * Terminates the node 
+	 */
+	public void terminate();
+	
+	
 	
 }

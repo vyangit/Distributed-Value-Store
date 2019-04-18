@@ -36,14 +36,14 @@ public class PaxosMain {
 			// Initialize connecting node
 			String remoteAddress = args[0];
 			
-//			System.out.println("-- Establishing connection to "+ remoteAddress +" --");
-//			if (ConnectionManager.establishConnection(paxosNode,  remoteAddress)) {
-//				System.out.println("-- Connection with "+remoteAddress+" established --");
-//			} else {
-//				System.out.println("-- Connection with "+remoteAddress+" failed --");
-//				System.out.println("-- Shutting down paxos node --");
-//				System.exit(0);
-//			}			
+			System.out.println("-- Establishing network connection to "+ remoteAddress +" --");
+			if (paxosNode.joinNetwork(remoteAddress)) {
+				System.out.println("-- Connection with network established --");
+			} else {
+				System.out.println("-- Connection with "+remoteAddress+" failed --");
+				System.out.println("-- Shutting down paxos node --");
+				System.exit(1);
+			}			
 		}
 		
 		// Common paxos node logic

@@ -1,21 +1,18 @@
 package structs;
 
-import java.net.Socket;
-
 import exceptions.UnidentifiedIpException;
 
 public class ConnectionDetails {
 
-	public IpPort ipPort; 
-	public Socket heartbeat; //Socket connection to the heartbeat
+	public String serverIp; 
+	public int serverPort;
+	public int paxosPort;
+	public int heartbeatPort;
 	
-	public ConnectionDetails(String remoteSocketAddress) throws UnidentifiedIpException {
-		this.ipPort = new IpPort(remoteSocketAddress);
-		this.heartbeat = initHeartbeat(remoteSocketAddress);
-	}
-	
-	private Socket initHeartbeat(String remoteSocketAddress) {
-		//TODO: Add threading and socket establishment
-		return new Socket();
+	public ConnectionDetails(String serverIp, int serverPort, int paxosPort, int heartbeatPort) throws UnidentifiedIpException {
+		this.serverIp = serverIp;
+		this.serverPort = serverPort;
+		this.paxosPort = paxosPort;
+		this.heartbeatPort = heartbeatPort;
 	}
 }

@@ -3,21 +3,25 @@ package nodes;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.Hashtable;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 
-import exceptions.UnidentifiedIpException;
 import roles.AcceptorsInterface;
 import roles.DistributedNodeInterface;
 import roles.LearnerInterface;
 import roles.ProposerInterface;
 import structs.ConnectionDetails;
-import structs.IpPort;
+import structs.JoinNetworkRequest;
+import structs.JoinNetworkResponse;
+import structs.NodeIdRequest;
+import structs.NodeIdResponse;
 import structs.Promise;
 import structs.Proposal;
 
@@ -26,23 +30,155 @@ import structs.Proposal;
  *
  */
 public class DistributedNode implements DistributedNodeInterface, AcceptorsInterface, LearnerInterface, ProposerInterface {
-	// Use a hashtable heartbeat access and lookup access may collide
 	
-	private DistributedNode distributedNode;
+	/**
+	 * Represents the node's id to be used in determining the leader.
+	 * The leader node has an id of 0, other nodes have a positive id > 0.
+	 * Any node with a negative id is invalid and will be terminated eventually.
+	 */
+	public Integer nodeId;
+	/**
+	 * Represents the network leader's server IP without port
+	 */
+	public String paxosLeaderIp;
+	/**
+	 * Represents the network leader's server port
+	 */
+	public int paxosLeaderPort;
+	/**
+	 * Represents this machine's server IP without port
+	 */
 	public String serverIp;
-	private ServerSocket serverSocket;
-	private ServerSocket paxosSocket;
-	private List<String> commandLog;
-	private ConcurrentHashMap<IpPort, ConnectionDetails> ipConnections; // key: remote ip address, value: details of connection
 	
+	private boolean isPaxosLeader;
+	private DistributedNode distributedNode;
+	private ServerSocket serverSocket; // socket is used for downloading logs and connecting to the server
+	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
+	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
+	private TableUpdateLogger updateLog;
+	
+	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote ip address, value: details of connection... is managed by paxos leader
+	private Hashtable<Integer, Socket> heartbeatConnections;
+	private Queue<Integer> reusableNodeIds;
+	
+	/**
+	 * Initializes a distributed node on this machine
+	 * @throws IOException
+	 */
 	public DistributedNode() throws IOException {
+		this.nodeId = 0;
+		this.isPaxosLeader = true;
 		this.serverSocket = new ServerSocket(0);
 		this.paxosSocket = new ServerSocket(0);
+		this.heartbeatSocket = new ServerSocket(0);
+		serverSocket.setReuseAddress(true);
+		paxosSocket.setReuseAddress(true);
+		heartbeatSocket.setReuseAddress(true);
+		
+		establishHeartbeat();
+		
 		this.serverIp = getOutboundServerAddress();
-		this.commandLog = Collections.synchronizedList(new ArrayList<String>());
-		this.ipConnections = new ConcurrentHashMap<IpPort, ConnectionDetails>();
+		this.updateLog = new TableUpdateLogger();
+		this.nodeConnections = new ConcurrentHashMap<Integer, ConnectionDetails>();
+		this.heartbeatConnections = new Hashtable<Integer, Socket>();
+		this.reusableNodeIds = new LinkedList<Integer>();
 	}
 
+
+	@Override
+	public boolean joinNetwork(String remoteSocketAddress) {
+		String[] vals = remoteSocketAddress.split(":");
+		if (vals.length != 2) return false;
+		Socket connection = null;
+		try {
+			connection = new Socket(vals[0].trim(),Integer.parseInt(vals[1].trim()));
+			ObjectInputStream inStream = new ObjectInputStream(connection.getInputStream());
+			ObjectOutputStream outStream = new ObjectOutputStream(connection.getOutputStream());
+			
+			JoinNetworkRequest connectReq = new JoinNetworkRequest(this.serverIp, this.paxosSocket.getLocalPort());
+			outStream.writeObject(connectReq);
+			
+			while (inStream.available() == 0) {
+				// Wait for response from connection
+				// TODO: Set a timeout
+			}
+			
+			// Read packet and double check object class
+			Object packet = inStream.readObject();
+			JoinNetworkResponse connectRes = null;
+			
+			if (packet instanceof JoinNetworkResponse) {
+				connectRes = (JoinNetworkResponse) packet;
+			} else {
+				return false;
+			}
+			
+			// Save leader's information
+			this.paxosLeaderIp = connectRes.paxosLeaderIp;
+			this.paxosLeaderPort = connectRes.paxosLeaderPort;
+			
+			this.isPaxosLeader = false;
+			
+			connection.close();
+			
+			// Try connecting to leader and get full contact list of remote nodes
+			connection = new Socket(paxosLeaderIp, paxosLeaderPort);
+			inStream = new ObjectInputStream(connection.getInputStream());
+			outStream = new ObjectOutputStream(connection.getOutputStream());
+			
+			outStream.writeObject(new NodeIdRequest());
+			// Read packet and double check object class
+			while (inStream.available() == 0) {
+				// Wait for response from connection
+				// TODO: Set a timeout
+			}
+			packet = inStream.readObject();
+			NodeIdResponse nodeIdRes = null;
+			
+			if (packet instanceof NodeIdResponse) {
+				nodeIdRes = (NodeIdResponse) packet;
+			} else {
+				return false;
+			}
+			
+			if (nodeIdRes.nodeId < 0) return false;
+			this.nodeId = nodeIdRes.nodeId;
+			this.nodeConnections.putAll(nodeIdRes.remoteConnections);
+			
+			connection.close();
+		} catch (Exception e) {
+			return false;
+		}
+		return true;
+	}
+	
+	@Override
+	public boolean establishHeartbeat() {
+		// TODO Auto-generated method stub
+		new Thread(new Runnable() {
+			public void run() {
+				try {
+					while (true) {
+						Socket clientSocket = heartbeatSocket.accept();
+						while (!clientSocket.isInputShutdown()) { 
+							// wait until disconnection
+						}
+					}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		});
+		return true;
+	}
+	
+	@Override
+	public void terminate() {
+		// TODO Auto-generated method stub
+		System.exit(1);
+	}
+	
 	@Override
 	public void proposeTransaction(Proposal proposal) {
 		// TODO Auto-generated method stub
@@ -61,18 +197,6 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		
 	}
 
-	@Override
-	public void joinNetwork(String remoteIpAddress) {
-		// TODO Auto-generated method stub
-		
-	}
-	
-	@Override
-	public void checkHeartbeat(Socket remoteConnection) {
-		// TODO Auto-generated method stub
-		
-	}
-	
 	
 	public DistributedNode getInstance() throws IOException {
 		if (this.distributedNode == null) {
@@ -80,24 +204,6 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		}
 		
 		return this.distributedNode;
-	}
-	
-	/**
-	 * @param socketAddress
-	 * @return True if successful or false if unsucessful add
-	 * @throws UnidentifiedIpException
-	 */
-	public boolean addRemoteConnection(String socketAddress) {
-		ConnectionDetails connDetails;
-		try {
-			connDetails = new ConnectionDetails(socketAddress);
-		} catch (UnidentifiedIpException e) {
-			return false;
-		}
-		
-		this.ipConnections.put(connDetails.ipPort, connDetails);
-		return true;
-		
 	}
 	
 	public ServerSocket getServerSocket() {
@@ -108,6 +214,9 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		return this.paxosSocket;
 	}
 	
+	private String concatPortToIp(String ip, int port) {
+		return String.format("%s:%d", ip, port);
+	}
 	
 	private String getOutboundServerAddress() throws IOException {
 		URL ipCheck = new URL("http://checkip.amazonaws.com");
