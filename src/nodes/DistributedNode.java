@@ -12,6 +12,7 @@ import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import roles.AcceptorsInterface;
 import roles.DistributedNodeInterface;
@@ -23,7 +24,8 @@ import structs.JoinNetworkResponse;
 import structs.NodeIdRequest;
 import structs.NodeIdResponse;
 import structs.Promise;
-import structs.Proposal;
+import structs.ProposalRequest;
+import structs.ProposalResponse;
 
 /**
  * @author Victor
@@ -49,14 +51,18 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	 * Represents this machine's server IP without port
 	 */
 	public String serverIp;
+	/**
+	 * # of nodes needed to reach consensus
+	 */
+	public int majority;
 	
 	private boolean isPaxosLeader;
 	private DistributedNode distributedNode;
 	private ServerSocket serverSocket; // socket is used for downloading logs and connecting to the server
 	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
 	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
-	private TableUpdateLogger updateLog;
 	
+	private TableUpdateLogger updateLog;
 	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote ip address, value: details of connection... is managed by paxos leader
 	private Hashtable<Integer, Socket> heartbeatConnections;
 	private Queue<Integer> reusableNodeIds;
@@ -74,14 +80,15 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		serverSocket.setReuseAddress(true);
 		paxosSocket.setReuseAddress(true);
 		heartbeatSocket.setReuseAddress(true);
-		
-		establishHeartbeat();
-		
 		this.serverIp = getOutboundServerAddress();
 		this.updateLog = new TableUpdateLogger();
 		this.nodeConnections = new ConcurrentHashMap<Integer, ConnectionDetails>();
 		this.heartbeatConnections = new Hashtable<Integer, Socket>();
 		this.reusableNodeIds = new LinkedList<Integer>();
+		
+		startServer();
+		startPaxos();
+		establishHeartbeat();
 	}
 
 
@@ -151,6 +158,13 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		}
 		return true;
 	}
+
+
+	@Override
+	public int electLeader() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
 	
 	@Override
 	public boolean establishHeartbeat() {
@@ -176,13 +190,60 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	@Override
 	public void terminate() {
 		// TODO Auto-generated method stub
-		System.exit(1);
+		System.exit(0);
 	}
 	
 	@Override
-	public void proposeTransaction(Proposal proposal) {
-		// TODO Auto-generated method stub
+	public void proposeTransaction(ProposalRequest proposal) {
+		AtomicInteger numAcks = new AtomicInteger(0);
+		AtomicInteger numNacks = new AtomicInteger(0);
 		
+		// Propose value for all acceptors and wait for ack/nack
+		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
+			new Thread(new Runnable() {
+				public void run() {
+					try {
+						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.serverPort);
+						ObjectOutputStream out = null;
+						ObjectInputStream in = null;
+						
+						if (remoteSocket.isConnected()) {
+							out = new ObjectOutputStream(remoteSocket.getOutputStream());
+							in = new ObjectInputStream(remoteSocket.getInputStream());
+						}
+						out.writeObject(proposal);
+						while (in.available() == 0) {
+							// Wait for reply or for connection to shut down
+							if (remoteSocket.isInputShutdown()) {
+								numNacks.getAndIncrement();
+								return;
+							}
+						}
+						
+						Object res = in.readObject();
+						if (res instanceof ProposalResponse) {
+							if (((ProposalResponse) res).ack) {
+								numAcks.getAndIncrement();
+							}
+						} else {
+							numNacks.getAndIncrement();
+						}
+					} catch (Exception e) {
+						numNacks.getAndIncrement();
+						// Stop operation because the heartbeat should take care of socket severance							
+					}
+				} 
+			});
+		}
+		
+		while (numAcks.get() < this.majority) {
+			// Wait for responses
+			if (numNacks.get() < this.majority) {
+				return;
+			}
+		}
+		
+		requestAccept();
 	}
 
 	@Override
@@ -206,6 +267,49 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		return this.distributedNode;
 	}
 	
+	private boolean startServer() {
+		// TODO Auto-generated method stub
+		new Thread(new Runnable() {
+			public void run() {
+				try {
+					while (true) {
+						Socket clientSocket = serverSocket.accept();
+						
+					}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		});
+		return true;
+	}
+	
+	private boolean startPaxos() {
+		// TODO Auto-generated method stub
+		new Thread(new Runnable() {
+			public void run() {
+				try {
+					while (true) {
+						Socket clientSocket = paxosSocket.accept();
+						ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
+						ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
+						while (in.available() != 0) { 
+							// wait until package comes in
+							if (clientSocket.isInputShutdown()) { // Assuming client never hangs up for no reason
+								electLeader();
+							}
+						}
+					}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		});
+		return true;
+	}
+	
 	public ServerSocket getServerSocket() {
 		return this.serverSocket;
 	}
@@ -216,6 +320,10 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	private String concatPortToIp(String ip, int port) {
 		return String.format("%s:%d", ip, port);
+	}
+	
+	private void recalculateMajority() {
+		this.majority = (this.nodeConnections.size()/2)+1;
 	}
 	
 	private String getOutboundServerAddress() throws IOException {

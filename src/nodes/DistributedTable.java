@@ -6,7 +6,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import enums.ReqType;
-import structs.Proposal;
+import structs.ProposalRequest;
 
 public class DistributedTable {
 	DistributedTable distributedTable;
@@ -35,7 +35,7 @@ public class DistributedTable {
 		return this.distributedTable;
 	}
 	
-	public boolean processRequest(Proposal proposal) {
+	public boolean processRequest(ProposalRequest proposal) {
 		return false;
 	}
 

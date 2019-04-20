@@ -1,6 +1,6 @@
 package roles;
 
-import structs.Proposal;
+import structs.ProposalRequest;
 
 /**
  * @author Victor
@@ -12,6 +12,6 @@ import structs.Proposal;
  */
 public interface ProposerInterface {
 	
-	void proposeTransaction(Proposal proposal);
+	void proposeTransaction(ProposalRequest proposal);
 	void requestAccept();
 }
