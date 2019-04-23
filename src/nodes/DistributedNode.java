@@ -305,7 +305,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		}
 		
 		// Sent out request to accept the change
-		AcceptRequest acceptReq = new AcceptRequest(proposal.proposalId, cmds);
+		AcceptRequest acceptReq = new AcceptRequest(proposal.proposalId, proposal.cmds);
 		requestAccept(acceptReq);
 	}
 
@@ -350,7 +350,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						// Stop operation because the heartbeat should take care of socket severance							
 					}
 				} 
-			});
+			}).start();
 		}
 		
 		while (numAcks.get() < this.majority) {
@@ -370,8 +370,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 
 	@Override
 	public void acceptProposal(AcceptedResponse acceptedRes) {
-		
-		
+		updateLog.append(acceptedRes);
 	}
 
 	

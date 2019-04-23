@@ -7,8 +7,8 @@ public class ProposalRequest {
 	public ProposalId proposalId;
 	public Command[] cmds;
 	
-	public ProposalRequest (Command[] cmds) {
-		this.proposalId = new ProposalId();
+	public ProposalRequest (int nodeId, Command[] cmds) {
+		this.proposalId = new ProposalId(nodeId);
 		this.cmds = cmds;
 	}
 }

@@ -1,9 +1,14 @@
 package nodes;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.PriorityQueue;
 
+import commands.Command;
 import responses.AcceptedResponse;
+import structs.DateParser;
 
 public class TableUpdateLogger {
 	
@@ -47,24 +52,60 @@ public class TableUpdateLogger {
 		});
 		this.logCacheSize = logCacheSize;
 		this.lowestIndex = 0;
-		this.dumpFolderPath = dumpFolderPath;
+		File dumpFolder = new File(dumpFolderPath);
+		if (dumpFolder.exists() && dumpFolder.isDirectory()) {
+			this.dumpFolderPath = dumpFolderPath;
+		} else {
+			System.out.println("Failed to find dump folder specified, default folder created");
+			dumpFolderPath = "./paxos_dump";
+			dumpFolder = new File(dumpFolderPath);
+			dumpFolder.mkdir();
+		}
 	}
 	
 	/**
 	 * @param commandHistory
-	 * @return
+	 * @return True if successfully added, else false
 	 */
 	public boolean append(AcceptedResponse commandHistory) {
-		log.offer(commandHistory);
-		lowestIndex++;
 		if (lowestIndex == logCacheSize) {
 			dumpLog();
 		}
+		if (!log.offer(commandHistory)) {
+			return false;
+		}
+		
+		lowestIndex++;
 		return true;
 	}
 	
-	private synchronized boolean dumpLog() {
-		lowestIndex=0;
-		return true;
+	private synchronized boolean dumpLog() {		
+		String dumpFileDate = DateParser.parseLogDate(new Date());
+		File dumpFile = new File(String.format("%s%s_paxos_dump.txt", dumpFolderPath, dumpFileDate));
+		try {
+			Thread.sleep(1);
+			dumpFile.createNewFile();
+			
+			FileOutputStream out = new FileOutputStream(dumpFile);
+			while (!log.isEmpty()) {
+				AcceptedResponse acceptedChange = log.peek();
+				// Write the header
+				out.write(acceptedChange.proposalId.toString().getBytes()); // write header
+				for (Command cmd: acceptedChange.cmds) {
+					out.write("\n".getBytes()); // Start new line
+					out.write(String.format("%s\n", cmd.toString()).getBytes()); // write command
+				}
+				
+				// Change successfully logged
+				out.flush();
+				lowestIndex=log.size();
+				log.poll(); 
+			}
+			
+			out.close();
+			return true;
+		} catch (Exception e) {
+			return false; // Failures occurred
+		}
 	}
 }
