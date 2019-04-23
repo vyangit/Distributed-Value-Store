@@ -1,4 +1,4 @@
-package structs;
+package requests;
 
 public class JoinNetworkRequest {
 	int paxosPort;

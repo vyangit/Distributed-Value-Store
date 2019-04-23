@@ -1,4 +1,4 @@
-package structs;
+package responses;
 
 import java.util.List;
 

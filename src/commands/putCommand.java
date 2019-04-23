@@ -1,5 +1,5 @@
 package commands;
 
-public class putCommand {
+public class PutCommand {
 
 }

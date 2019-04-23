@@ -8,24 +8,26 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
-import java.util.Hashtable;
 import java.util.LinkedList;
+import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import requests.AcceptRequest;
+import requests.JoinNetworkRequest;
+import requests.NodeIdRequest;
+import requests.PrepareRequest;
+import requests.ProposalRequest;
+import responses.AcceptedResponse;
+import responses.JoinNetworkResponse;
+import responses.NodeIdResponse;
+import responses.PromiseResponse;
 import roles.AcceptorsInterface;
 import roles.DistributedNodeInterface;
 import roles.LearnerInterface;
 import roles.ProposerInterface;
 import structs.ConnectionDetails;
-import structs.JoinNetworkRequest;
-import structs.JoinNetworkResponse;
-import structs.NodeIdRequest;
-import structs.NodeIdResponse;
-import structs.Promise;
-import structs.ProposalRequest;
-import structs.ProposalResponse;
 
 /**
  * @author Victor
@@ -57,14 +59,16 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	public int majority;
 	
 	private boolean isPaxosLeader;
+	private boolean paxosNetworkIsPaused; // used to stop the paxos network when a leader has died
 	private DistributedNode distributedNode;
 	private ServerSocket serverSocket; // socket is used for downloading logs and connecting to the server
 	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
 	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
 	
+	private PriorityQueue<ProposalRequest> proposalsToServe;
+	
 	private TableUpdateLogger updateLog;
 	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote ip address, value: details of connection... is managed by paxos leader
-	private Hashtable<Integer, Socket> heartbeatConnections;
 	private Queue<Integer> reusableNodeIds;
 	
 	/**
@@ -83,7 +87,6 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		this.serverIp = getOutboundServerAddress();
 		this.updateLog = new TableUpdateLogger();
 		this.nodeConnections = new ConcurrentHashMap<Integer, ConnectionDetails>();
-		this.heartbeatConnections = new Hashtable<Integer, Socket>();
 		this.reusableNodeIds = new LinkedList<Integer>();
 		
 		startServer();
@@ -104,6 +107,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			
 			JoinNetworkRequest connectReq = new JoinNetworkRequest(this.serverIp, this.paxosSocket.getLocalPort());
 			outStream.writeObject(connectReq);
+			outStream.flush();
 			
 			while (inStream.available() == 0) {
 				// Wait for response from connection
@@ -134,6 +138,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			outStream = new ObjectOutputStream(connection.getOutputStream());
 			
 			outStream.writeObject(new NodeIdRequest());
+			outStream.flush();
 			// Read packet and double check object class
 			while (inStream.available() == 0) {
 				// Wait for response from connection
@@ -168,8 +173,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	@Override
 	public boolean establishHeartbeat() {
-		// TODO Auto-generated method stub
-		new Thread(new Runnable() {
+		Thread heartbeat = new Thread(new Runnable() {
 			public void run() {
 				try {
 					while (true) {
@@ -179,12 +183,44 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						}
 					}
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+					terminate();
 				}
 			}
 		});
+		
+		heartbeat.start();
 		return true;
+	}
+	
+	public void checkHeartbeats() {
+		new Thread(new Runnable() {
+			public void run() {
+				try {
+					while (true) {
+						// Run heartbeat checks every 10 secs and remove any that fail to respond
+						Thread.sleep(10000);
+						for (Integer key: nodeConnections.keySet()) {
+							ConnectionDetails connDetails = nodeConnections.get(key);
+							Socket heartbeatSocket = new Socket(connDetails.serverIp, connDetails.heartbeatPort);
+							if (heartbeatSocket.isConnected()) {
+								heartbeatSocket.close();
+								continue;
+							} else {
+								nodeConnections.remove(key);
+								recalculateMajority();
+								reusableNodeIds.offer(key);
+							}
+						}
+						Socket clientSocket = heartbeatSocket.accept();
+						while (!clientSocket.isInputShutdown()) { 
+							// wait until disconnection
+						}
+					}
+				} catch (Exception e) {
+					terminate();
+				}
+			}
+		});
 	}
 	
 	@Override
@@ -193,12 +229,91 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		System.exit(0);
 	}
 	
+
+
 	@Override
 	public void proposeTransaction(ProposalRequest proposal) {
+		if (isPaxosLeader) {
+			prepareTransaction(proposal);
+		} else {
+			try {
+				Socket leaderSocket = new Socket(paxosLeaderIp, paxosLeaderPort);
+				ObjectOutputStream out = new ObjectOutputStream(leaderSocket.getOutputStream());
+				out.writeObject(proposal);
+				out.flush();
+				leaderSocket.close();
+			} catch (IOException e) {
+				System.out.println("Proposal was not uploaded to leader");
+			}			
+		}
+	}
+
+	
+	@Override
+	public void prepareTransaction(ProposalRequest proposal) {
+		AtomicInteger numAcks = new AtomicInteger(0);
+		AtomicInteger numNacks = new AtomicInteger(0);
+		PrepareRequest prepareReq = new PrepareRequest(proposal.proposalId);
+		
+		// Propose value for all acceptors and wait for ack/nack
+		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
+			Thread prepareThread = new Thread(new Runnable() {
+				public void run() {
+					try {
+						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.serverPort);
+						ObjectOutputStream out = null;
+						ObjectInputStream in = null;
+						
+						if (remoteSocket.isConnected()) {
+							out = new ObjectOutputStream(remoteSocket.getOutputStream());
+							in = new ObjectInputStream(remoteSocket.getInputStream());
+						}
+						out.writeObject(proposal);
+						out.flush();
+						while (in.available() == 0) {
+							// Wait for reply or for connection to shut down
+							if (remoteSocket.isInputShutdown()) {
+								numNacks.getAndIncrement();
+								return;
+							}
+						}
+						
+						Object res = in.readObject();
+						if (res instanceof PromiseResponse) {
+							if (((PromiseResponse) res).ack) {
+								numAcks.getAndIncrement();
+							}
+						} else {
+							numNacks.getAndIncrement();
+						}
+						remoteSocket.close();
+					} catch (Exception e) {
+						numNacks.getAndIncrement();
+						// Stop operation because the heartbeat should take care of socket severance							
+					}
+				} 
+			});
+			
+			prepareThread.start();
+		}
+		
+		while (numAcks.get() < this.majority) {
+			// Wait for responses
+			if (numNacks.get() < this.majority) {
+				return;
+			}
+		}
+		
+		// Sent out request to accept the change
+		AcceptRequest acceptReq = new AcceptRequest(proposal.proposalId, cmds);
+		requestAccept(acceptReq);
+	}
+
+	@Override
+	public void requestAccept(AcceptRequest acceptReq) {
 		AtomicInteger numAcks = new AtomicInteger(0);
 		AtomicInteger numNacks = new AtomicInteger(0);
 		
-		// Propose value for all acceptors and wait for ack/nack
 		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
 			new Thread(new Runnable() {
 				public void run() {
@@ -211,7 +326,8 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 							out = new ObjectOutputStream(remoteSocket.getOutputStream());
 							in = new ObjectInputStream(remoteSocket.getInputStream());
 						}
-						out.writeObject(proposal);
+						out.writeObject(acceptReq);
+						out.flush();
 						while (in.available() == 0) {
 							// Wait for reply or for connection to shut down
 							if (remoteSocket.isInputShutdown()) {
@@ -221,13 +337,14 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						}
 						
 						Object res = in.readObject();
-						if (res instanceof ProposalResponse) {
-							if (((ProposalResponse) res).ack) {
+						if (res instanceof PromiseResponse) {
+							if (((PromiseResponse) res).ack) {
 								numAcks.getAndIncrement();
 							}
 						} else {
 							numNacks.getAndIncrement();
 						}
+						remoteSocket.close();
 					} catch (Exception e) {
 						numNacks.getAndIncrement();
 						// Stop operation because the heartbeat should take care of socket severance							
@@ -243,18 +360,17 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			}
 		}
 		
-		requestAccept();
 	}
 
 	@Override
-	public void requestAccept() {
-		// TODO Auto-generated method stub
+	public void promiseTransaction(PromiseResponse promise) {
 		
 	}
 
+
 	@Override
-	public void promiseTransaction(Promise promise) {
-		// TODO Auto-generated method stub
+	public void acceptProposal(AcceptedResponse acceptedRes) {
+		
 		
 	}
 
@@ -269,28 +385,35 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	private boolean startServer() {
 		// TODO Auto-generated method stub
-		new Thread(new Runnable() {
+		Thread server = new Thread(new Runnable() {
 			public void run() {
 				try {
 					while (true) {
 						Socket clientSocket = serverSocket.accept();
-						
+						ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
+						ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
+						while (in.available() != 0 && !clientSocket.isInputShutdown()) { 
+							// wait until package comes in
+						}
 					}
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
 		});
+		
+		server.start();
 		return true;
 	}
 	
 	private boolean startPaxos() {
-		// TODO Auto-generated method stub
-		new Thread(new Runnable() {
+		Thread paxos = new Thread(new Runnable() {
 			public void run() {
 				try {
-					while (true) {
+					if (isPaxosLeader) {
+						checkHeartbeats();
+					}
+					while (!paxosNetworkIsPaused) {
 						Socket clientSocket = paxosSocket.accept();
 						ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
 						ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
@@ -300,13 +423,34 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 								electLeader();
 							}
 						}
+						
+						Object packet = in.readObject();
+						
+						if (packet instanceof AcceptedResponse) {
+							
+						} else if (isPaxosLeader) {
+							if (packet instanceof ProposalRequest) {
+								
+							} else if (packet instanceof PromiseResponse) {
+								
+							}
+						} else { //A paxos follower
+							if (packet instanceof PrepareRequest) {
+								
+							} else if (packet instanceof AcceptRequest) {
+								
+							}
+						}
+						
+						clientSocket.close();
 					}
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+				} catch (Exception e) {
+					terminate();
 				}
 			}
 		});
+		
+		paxos.start();
 		return true;
 	}
 	

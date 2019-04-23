@@ -1,7 +1,9 @@
 package roles;
 
-import structs.Promise;
+import responses.AcceptedResponse;
+import responses.PromiseResponse;
 
 public interface AcceptorsInterface {
-	public void promiseTransaction(Promise promise);
+	public void promiseTransaction(PromiseResponse promise);
+	public void acceptProposal(AcceptedResponse acceptedRes);
 }

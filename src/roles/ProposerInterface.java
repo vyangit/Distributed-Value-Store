@@ -1,6 +1,9 @@
 package roles;
 
-import structs.ProposalRequest;
+import commands.Command;
+import requests.AcceptRequest;
+import requests.PrepareRequest;
+import requests.ProposalRequest;
 
 /**
  * @author Victor
@@ -12,6 +15,8 @@ import structs.ProposalRequest;
  */
 public interface ProposerInterface {
 	
+
 	void proposeTransaction(ProposalRequest proposal);
-	void requestAccept();
+	void prepareTransaction(ProposalRequest proposal);
+	void requestAccept(AcceptRequest acceptReq);
 }

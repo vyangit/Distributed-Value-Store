@@ -1,5 +1,5 @@
 package commands;
 
-public class getCommand {
+public class GetCommand {
 
 }

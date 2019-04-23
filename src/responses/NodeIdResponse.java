@@ -1,6 +1,8 @@
-package structs;
+package responses;
 
 import java.util.Map;
+
+import structs.ConnectionDetails;
 
 public class NodeIdResponse {
 	public int nodeId;
