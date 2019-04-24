@@ -1,8 +1,5 @@
 package requests;
 
-import java.util.Date;
-import java.util.UUID;
-
 import structs.ProposalId;
 
 /**

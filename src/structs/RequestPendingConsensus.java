@@ -1,15 +1,13 @@
 package structs;
 
-import requests.AcceptRequest;
-
-public class RequestPendingAcceptance {
-	private AcceptRequest acceptRequest;
+public class RequestPendingConsensus<T> {
+	private T request;
 	private int nacks;
 	private int acks;
 	private int majority;
 	
-	public RequestPendingAcceptance(AcceptRequest acceptRequest, int majority) {
-		this.acceptRequest = acceptRequest;
+	public RequestPendingConsensus(T request, int majority) {
+		this.request = request;
 		this.nacks = 0;
 		this.acks = 0;
 		this.majority = majority;
@@ -27,8 +25,13 @@ public class RequestPendingAcceptance {
 		return majority;
 	}
 	
-	public boolean requestsEqual(AcceptRequest acceptRequest) {
-		return this.acceptRequest.equals(acceptRequest);
+	public T getRequest() {
+		return request;
+	}
+	
+	
+	public boolean requestsEqual(T request) {
+		return this.request.equals(request);
 	}
 	
 	public Boolean checkIfAccepted() {

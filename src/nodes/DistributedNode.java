@@ -27,12 +27,13 @@ import roles.DistributedNodeInterface;
 import roles.LearnerInterface;
 import roles.ProposerInterface;
 import structs.ConnectionDetails;
-import structs.RequestPendingAcceptance;
+import structs.RequestPendingConsensus;
 
 /**
  * @author Victor
  *
  */
+@SuppressWarnings("unused") // Remove when done
 public class DistributedNode implements DistributedNodeInterface, AcceptorsInterface, LearnerInterface, ProposerInterface {
 	
 	/**
@@ -67,7 +68,8 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
 	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
 	
-	private RequestPendingAcceptance reqPendingAcceptance; // The accepted value that is still pending acceptance
+	private RequestPendingConsensus<PrepareRequest> reqPendingPromise; // The prepare request that is waiting to be promised
+	private RequestPendingConsensus<AcceptRequest> reqPendingAcceptance; // The accepted value that is still pending acceptance
 	
 	private PriorityQueue<ProposalRequest> proposalsToServe;
 	private TableUpdateLogger updateLog;
@@ -264,28 +266,13 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 					try {
 						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.serverPort);
 						ObjectOutputStream out = null;
-						ObjectInputStream in = null;
 						
 						if (remoteSocket.isConnected()) {
 							out = new ObjectOutputStream(remoteSocket.getOutputStream());
-							in = new ObjectInputStream(remoteSocket.getInputStream());
 						}
 						out.writeObject(prepareReq);
 						out.flush();
-						while (in.available() == 0) {
-							// Wait for reply or for connection to shut down
-							if (remoteSocket.isInputShutdown()) {
-								return;
-							}
-						}
-						
-						Object res = in.readObject();
-						if (res instanceof PromiseResponse) {
-							if (((PromiseResponse) res).ack) {
-								numAcks.getAndIncrement();
-							}
-						}
-						
+
 						remoteSocket.close();
 					} catch (Exception e) {
 						// Stop operation because the heartbeat should take care of socket severance							
@@ -318,20 +305,12 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 					try {
 						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.serverPort);
 						ObjectOutputStream out = null;
-						ObjectInputStream in = null;
 						
 						if (remoteSocket.isConnected()) {
 							out = new ObjectOutputStream(remoteSocket.getOutputStream());
-							in = new ObjectInputStream(remoteSocket.getInputStream());
 						}
 						out.writeObject(acceptReq);
 						out.flush();
-						while (in.available() == 0) {
-							// Wait for reply or for connection to shut down
-							if (remoteSocket.isInputShutdown()) {
-								return;
-							}
-						}
 						
 						remoteSocket.close();
 					} catch (Exception e) {
@@ -356,12 +335,10 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 
 	@Override
 	public void terminate() {
-		// TODO Auto-generated method stub
 		System.exit(0);
 	}
 	
 	private boolean startServer() {
-		// TODO Auto-generated method stub
 		Thread server = new Thread(new Runnable() {
 			public void run() {
 				try {
@@ -404,11 +381,15 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						Object packet = in.readObject();
 						
 						if (packet instanceof AcceptRequest) {
-							if (reqPendingAcceptance.requestsEqual((AcceptRequest) packet)) {
+							AcceptRequest acceptReq = (AcceptRequest) packet;
+							if (reqPendingAcceptance == null) {
+								reqPendingAcceptance = new RequestPendingConsensus<>(acceptReq, majority);
+							}
+							if (reqPendingAcceptance.requestsEqual(acceptReq)) {
 								reqPendingAcceptance.incrementAcks();
 								if (reqPendingAcceptance.checkIfAccepted()) {
 									reqPendingAcceptance = null;
-									acceptProposal((AcceptRequest) packet);
+									acceptProposal(acceptReq);
 								}
 							} 
 						} else if (isPaxosLeader) {
@@ -418,8 +399,6 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 							}
 						} else { //A paxos follower
 							if (packet instanceof PrepareRequest) {
-								
-							} else if (packet instanceof AcceptRequest) {
 								
 							}
 						}
