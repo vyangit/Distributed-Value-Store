@@ -75,6 +75,8 @@ public class TableUpdateLogger {
 			return false;
 		}
 		
+		DistributedTable table = DistributedTable.getInstance();
+		table.processRequest(commandHistory);
 		lowestIndex++;
 		return true;
 	}
@@ -98,7 +100,7 @@ public class TableUpdateLogger {
 				
 				// Change successfully logged
 				out.flush();
-				lowestIndex=log.size();
+				lowestIndex--;
 				log.poll(); 
 			}
 			

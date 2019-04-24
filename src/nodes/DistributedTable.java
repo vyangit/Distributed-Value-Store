@@ -1,41 +1,44 @@
 package nodes;
 
-import java.time.Instant;
+import java.io.IOException;
 import java.util.Hashtable;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
-import requests.PrepareRequest;
+import commands.Command;
+import enums.CommandPrefix;
+import responses.AcceptedResponse;
 
 public class DistributedTable {
-	private DistributedTable distributedTable; // singleton instance
+	private static DistributedTable distributedTable = null; // singleton instance
 	private Hashtable<String, String> transactionStore;
-	
-//	private class ManagedValue {
-//		Lock lock;
-//		String value;
-//		Instant timestamp;
-//		
-//		public ManagedValue(String value, Instant timestamp) {
-//			this.lock = new ReentrantLock();
-//			this.value = value;
-//			this.timestamp = timestamp;
-//		}
-//	}
 	
 	private DistributedTable() {
 		this.transactionStore = new Hashtable<String, String>();
 	}
 	
-	public DistributedTable getInstance() {
-		if (this.distributedTable == null) {
+	public static DistributedTable getInstance() {
+		if (distributedTable == null) {
 			distributedTable = new DistributedTable();
 		}
-		return this.distributedTable;
+		return distributedTable;
 	}
 	
-	public boolean processRequest(PrepareRequest proposal) {
-		return false;
+	public synchronized boolean processRequest(AcceptedResponse changes) {
+		boolean isRequestingNode;
+		try {
+			isRequestingNode = DistributedNode.getInstance().nodeId == changes.proposalId.nodeId;
+		} catch (IOException e) {
+			return false;
+		}
+		for (Command cmd: changes.cmds){
+			if (isRequestingNode && cmd.commandType == CommandPrefix.GET) {
+				System.out.printf("GET %s: %s", cmd.key, cmd.value);
+			} else if (cmd.commandType == CommandPrefix.PUT) {
+				updateValue(cmd.key, cmd.value);
+			} else if (cmd.commandType == CommandPrefix.DELETE) {
+				deleteValue(cmd.key);
+			}
+		}
+		return true;
 	}
 
 	private void updateValue(String key, String value) {

@@ -58,9 +58,11 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	 */
 	public int majority;
 	
+	private static DistributedNode distributedNode;
+	
 	private boolean isPaxosLeader;
 	private boolean paxosNetworkIsPaused; // used to stop the paxos network when a leader has died
-	private DistributedNode distributedNode;
+	
 	private ServerSocket serverSocket; // socket is used for downloading logs and connecting to the server
 	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
 	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
@@ -374,12 +376,12 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	}
 
 	
-	public DistributedNode getInstance() throws IOException {
-		if (this.distributedNode == null) {
-			this.distributedNode = new DistributedNode();
+	public static DistributedNode getInstance() throws IOException {
+		if (distributedNode == null) {
+			distributedNode = new DistributedNode();
 		}
 		
-		return this.distributedNode;
+		return distributedNode;
 	}
 	
 	private boolean startServer() {
