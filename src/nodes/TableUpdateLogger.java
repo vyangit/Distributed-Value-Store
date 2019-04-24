@@ -7,7 +7,7 @@ import java.util.Date;
 import java.util.PriorityQueue;
 
 import commands.Command;
-import responses.AcceptedResponse;
+import requests.AcceptRequest;
 import structs.DateParser;
 
 public class TableUpdateLogger {
@@ -17,7 +17,7 @@ public class TableUpdateLogger {
 	 */
 	public int logCacheSize;
 	
-	private PriorityQueue<AcceptedResponse> log;
+	private PriorityQueue<AcceptRequest> log;
 	private int lowestIndex;
 	private String dumpFolderPath;
 	
@@ -44,9 +44,9 @@ public class TableUpdateLogger {
 	 * @param dumpFolderPath The path to the folder to dump the logs
 	 */
 	public TableUpdateLogger(int logCacheSize, String dumpFolderPath) {
-		this.log = new PriorityQueue<AcceptedResponse>(logCacheSize, new Comparator<AcceptedResponse>() {
+		this.log = new PriorityQueue<AcceptRequest>(logCacheSize, new Comparator<AcceptRequest>() {
 			@Override
-			public int compare(AcceptedResponse a, AcceptedResponse b) {
+			public int compare(AcceptRequest a, AcceptRequest b) {
 				return a.proposalId.timestamp.compareTo(b.proposalId.timestamp);
 			}
 		});
@@ -67,7 +67,7 @@ public class TableUpdateLogger {
 	 * @param commandHistory
 	 * @return True if successfully added, else false
 	 */
-	public boolean append(AcceptedResponse commandHistory) {
+	public boolean append(AcceptRequest commandHistory) {
 		if (lowestIndex == logCacheSize) {
 			dumpLog();
 		}
@@ -90,7 +90,7 @@ public class TableUpdateLogger {
 			
 			FileOutputStream out = new FileOutputStream(dumpFile);
 			while (!log.isEmpty()) {
-				AcceptedResponse acceptedChange = log.peek();
+				AcceptRequest acceptedChange = log.peek();
 				// Write the header
 				out.write(acceptedChange.proposalId.toString().getBytes()); // write header
 				for (Command cmd: acceptedChange.cmds) {

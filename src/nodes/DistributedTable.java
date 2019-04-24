@@ -5,7 +5,7 @@ import java.util.Hashtable;
 
 import commands.Command;
 import enums.CommandPrefix;
-import responses.AcceptedResponse;
+import requests.AcceptRequest;
 
 public class DistributedTable {
 	private static DistributedTable distributedTable = null; // singleton instance
@@ -22,7 +22,7 @@ public class DistributedTable {
 		return distributedTable;
 	}
 	
-	public synchronized boolean processRequest(AcceptedResponse changes) {
+	public synchronized boolean processRequest(AcceptRequest changes) {
 		boolean isRequestingNode;
 		try {
 			isRequestingNode = DistributedNode.getInstance().nodeId == changes.proposalId.nodeId;

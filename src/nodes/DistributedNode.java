@@ -19,6 +19,7 @@ import requests.JoinNetworkRequest;
 import requests.NodeIdRequest;
 import requests.PrepareRequest;
 import requests.ProposalRequest;
+import responses.AcceptResponse;
 import responses.AcceptedResponse;
 import responses.JoinNetworkResponse;
 import responses.NodeIdResponse;
@@ -28,6 +29,7 @@ import roles.DistributedNodeInterface;
 import roles.LearnerInterface;
 import roles.ProposerInterface;
 import structs.ConnectionDetails;
+import structs.RequestPendingAcceptance;
 
 /**
  * @author Victor
@@ -67,8 +69,9 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
 	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
 	
-	private PriorityQueue<ProposalRequest> proposalsToServe;
+	private RequestPendingAcceptance reqPendingAcceptance; // The accepted value that is still pending acceptance
 	
+	private PriorityQueue<ProposalRequest> proposalsToServe;
 	private TableUpdateLogger updateLog;
 	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote ip address, value: details of connection... is managed by paxos leader
 	private Queue<Integer> reusableNodeIds;
@@ -96,6 +99,14 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		establishHeartbeat();
 	}
 
+	public static DistributedNode getInstance() throws IOException {
+		if (distributedNode == null) {
+			distributedNode = new DistributedNode();
+		}
+		
+		return distributedNode;
+	}
+	
 
 	@Override
 	public boolean joinNetwork(String remoteSocketAddress) {
@@ -195,7 +206,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	}
 	
 	public void checkHeartbeats() {
-		new Thread(new Runnable() {
+		Thread pulseChecker = new Thread(new Runnable() {
 			public void run() {
 				try {
 					while (true) {
@@ -205,17 +216,14 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 							ConnectionDetails connDetails = nodeConnections.get(key);
 							Socket heartbeatSocket = new Socket(connDetails.serverIp, connDetails.heartbeatPort);
 							if (heartbeatSocket.isConnected()) {
-								heartbeatSocket.close();
-								continue;
+								// Do nothing
 							} else {
 								nodeConnections.remove(key);
 								recalculateMajority();
 								reusableNodeIds.offer(key);
 							}
-						}
-						Socket clientSocket = heartbeatSocket.accept();
-						while (!clientSocket.isInputShutdown()) { 
-							// wait until disconnection
+							
+							heartbeatSocket.close();
 						}
 					}
 				} catch (Exception e) {
@@ -223,16 +231,10 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 				}
 			}
 		});
+		
+		pulseChecker.start();
 	}
 	
-	@Override
-	public void terminate() {
-		// TODO Auto-generated method stub
-		System.exit(0);
-	}
-	
-
-
 	@Override
 	public void proposeTransaction(ProposalRequest proposal) {
 		if (isPaxosLeader) {
@@ -253,8 +255,8 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	@Override
 	public void prepareTransaction(ProposalRequest proposal) {
-		AtomicInteger numAcks = new AtomicInteger(0);
-		AtomicInteger numNacks = new AtomicInteger(0);
+		AtomicInteger numResponses = new AtomicInteger(1);
+		AtomicInteger numAcks = new AtomicInteger(1);
 		PrepareRequest prepareReq = new PrepareRequest(proposal.proposalId);
 		
 		// Propose value for all acceptors and wait for ack/nack
@@ -270,12 +272,11 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 							out = new ObjectOutputStream(remoteSocket.getOutputStream());
 							in = new ObjectInputStream(remoteSocket.getInputStream());
 						}
-						out.writeObject(proposal);
+						out.writeObject(prepareReq);
 						out.flush();
 						while (in.available() == 0) {
 							// Wait for reply or for connection to shut down
 							if (remoteSocket.isInputShutdown()) {
-								numNacks.getAndIncrement();
 								return;
 							}
 						}
@@ -285,13 +286,13 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 							if (((PromiseResponse) res).ack) {
 								numAcks.getAndIncrement();
 							}
-						} else {
-							numNacks.getAndIncrement();
 						}
+						
 						remoteSocket.close();
 					} catch (Exception e) {
-						numNacks.getAndIncrement();
 						// Stop operation because the heartbeat should take care of socket severance							
+					} finally {
+						numResponses.getAndIncrement();
 					}
 				} 
 			});
@@ -299,23 +300,20 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			prepareThread.start();
 		}
 		
-		while (numAcks.get() < this.majority) {
+		while (numResponses.get() != nodeConnections.size()) {
 			// Wait for responses
-			if (numNacks.get() < this.majority) {
-				return;
-			}
 		}
 		
-		// Sent out request to accept the change
-		AcceptRequest acceptReq = new AcceptRequest(proposal.proposalId, proposal.cmds);
-		requestAccept(acceptReq);
+		if (numAcks.get() >= this.majority) {
+			// Sent out request to accept the change
+			AcceptRequest acceptReq = new AcceptRequest(proposal.proposalId, proposal.cmds);
+			requestAccept(acceptReq);
+		}
+		return;
 	}
 
 	@Override
 	public void requestAccept(AcceptRequest acceptReq) {
-		AtomicInteger numAcks = new AtomicInteger(0);
-		AtomicInteger numNacks = new AtomicInteger(0);
-		
 		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
 			new Thread(new Runnable() {
 				public void run() {
@@ -333,35 +331,19 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						while (in.available() == 0) {
 							// Wait for reply or for connection to shut down
 							if (remoteSocket.isInputShutdown()) {
-								numNacks.getAndIncrement();
 								return;
 							}
 						}
 						
-						Object res = in.readObject();
-						if (res instanceof PromiseResponse) {
-							if (((PromiseResponse) res).ack) {
-								numAcks.getAndIncrement();
-							}
-						} else {
-							numNacks.getAndIncrement();
-						}
 						remoteSocket.close();
 					} catch (Exception e) {
-						numNacks.getAndIncrement();
 						// Stop operation because the heartbeat should take care of socket severance							
 					}
 				} 
 			}).start();
 		}
 		
-		while (numAcks.get() < this.majority) {
-			// Wait for responses
-			if (numNacks.get() < this.majority) {
-				return;
-			}
-		}
-		
+		return;
 	}
 
 	@Override
@@ -369,19 +351,15 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		
 	}
 
-
 	@Override
-	public void acceptProposal(AcceptedResponse acceptedRes) {
-		updateLog.append(acceptedRes);
+	public void acceptProposal(AcceptRequest acceptedProposal) {
+		updateLog.append(acceptedProposal);
 	}
 
-	
-	public static DistributedNode getInstance() throws IOException {
-		if (distributedNode == null) {
-			distributedNode = new DistributedNode();
-		}
-		
-		return distributedNode;
+	@Override
+	public void terminate() {
+		// TODO Auto-generated method stub
+		System.exit(0);
 	}
 	
 	private boolean startServer() {
@@ -427,13 +405,18 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						
 						Object packet = in.readObject();
 						
-						if (packet instanceof AcceptedResponse) {
-							
+						if (packet instanceof AcceptRequest) {
+							if (reqPendingAcceptance.requestsEqual((AcceptRequest) packet)) {
+								reqPendingAcceptance.incrementAcks();
+								if (reqPendingAcceptance.checkIfAccepted()) {
+									reqPendingAcceptance = null;
+									acceptProposal((AcceptRequest) packet);
+								}
+							} 
 						} else if (isPaxosLeader) {
 							if (packet instanceof ProposalRequest) {
-								
-							} else if (packet instanceof PromiseResponse) {
-								
+								proposalsToServe.add((ProposalRequest) packet);
+								prepareTransaction((ProposalRequest) packet);
 							}
 						} else { //A paxos follower
 							if (packet instanceof PrepareRequest) {

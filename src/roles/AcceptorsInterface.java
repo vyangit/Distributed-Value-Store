@@ -1,9 +1,9 @@
 package roles;
 
-import responses.AcceptedResponse;
+import requests.AcceptRequest;
 import responses.PromiseResponse;
 
 public interface AcceptorsInterface {
 	public void promiseTransaction(PromiseResponse promise);
-	public void acceptProposal(AcceptedResponse acceptedRes);
+	public void acceptProposal(AcceptRequest acceptedProposal);
 }
