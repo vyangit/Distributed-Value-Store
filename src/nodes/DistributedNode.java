@@ -19,8 +19,6 @@ import requests.JoinNetworkRequest;
 import requests.NodeIdRequest;
 import requests.PrepareRequest;
 import requests.ProposalRequest;
-import responses.AcceptResponse;
-import responses.AcceptedResponse;
 import responses.JoinNetworkResponse;
 import responses.NodeIdResponse;
 import responses.PromiseResponse;
