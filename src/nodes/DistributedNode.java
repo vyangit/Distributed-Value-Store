@@ -8,17 +8,23 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import requests.AcceptRequest;
+import requests.ElectionRequest;
 import requests.JoinNetworkRequest;
 import requests.NodeIdRequest;
 import requests.PrepareRequest;
 import requests.ProposalRequest;
+import responses.ElectionResponse;
 import responses.JoinNetworkResponse;
 import responses.NodeIdResponse;
 import responses.PromiseResponse;
@@ -155,7 +161,9 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			// Read packet and double check object class
 			while (inStream.available() == 0) {
 				// Wait for response from connection
-				// TODO: Set a timeout
+				if(connection.isInputShutdown()) {
+					return false;
+				}
 			}
 			packet = inStream.readObject();
 			NodeIdResponse nodeIdRes = null;
@@ -180,8 +188,73 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 
 	@Override
 	public int electLeader() {
-		// TODO Auto-generated method stub
-		return 0;
+		AtomicInteger numAcks = new AtomicInteger(0);
+		List<FutureTask<ElectionResponse>> votes = new ArrayList<>();
+		
+		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
+			FutureTask<ElectionResponse> vote = new FutureTask<ElectionResponse>(new Callable<ElectionResponse>() {
+				@Override
+				public ElectionResponse call() {
+					ElectionResponse res = null;
+					
+					try {	
+						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.paxosPort);
+						ObjectOutputStream out = new ObjectOutputStream(remoteSocket.getOutputStream());
+						ObjectInputStream in = new ObjectInputStream(remoteSocket.getInputStream());
+						
+						if (remoteSocket.isConnected()) {
+							out.writeObject(new ElectionRequest(nodeId));
+							
+							while (in.available() == 0) {
+								if (remoteSocket.isInputShutdown()) {
+									return res;
+								}
+							}
+							
+							Object packet = in.readObject();
+							if (packet instanceof ElectionResponse) {
+								res = (ElectionResponse) packet;
+							}
+							remoteSocket.close();
+						}
+					} catch (Exception e) {
+						// Do nothing and skip
+					}
+					return res;
+				}
+			});
+			
+			new Thread(vote).start();
+			votes.add(vote);
+		}
+		
+		Integer lowestNodeId = this.nodeId;
+
+		// Figure out the lowest node and make them the leader
+		for (FutureTask<ElectionResponse> vote: votes) {
+			ElectionResponse res;
+			try {
+				res = vote.get();
+				if (res.remoteLowerNodeId != null && res.remoteLowerNodeId > lowestNodeId) {
+					lowestNodeId = res.remoteLowerNodeId;
+				}
+			} catch (Exception e) {
+				continue;
+			}
+				
+		}
+		
+		if (lowestNodeId == this.nodeId) {
+			this.isPaxosLeader = true;
+		} else {
+			this.isPaxosLeader = false;
+		}
+		
+		ConnectionDetails details = this.nodeConnections.get(nodeId);
+		this.paxosLeaderIp = details.serverIp;
+		this.paxosLeaderPort = details.paxosPort;
+		
+		return lowestNodeId;
 	}
 	
 	@Override
@@ -214,6 +287,9 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						Thread.sleep(10000);
 						for (Integer key: nodeConnections.keySet()) {
 							ConnectionDetails connDetails = nodeConnections.get(key);
+							if (connDetails.serverIp == serverIp) {
+								continue;
+							}
 							Socket heartbeatSocket = new Socket(connDetails.serverIp, connDetails.heartbeatPort);
 							if (heartbeatSocket.isConnected()) {
 								// Do nothing
