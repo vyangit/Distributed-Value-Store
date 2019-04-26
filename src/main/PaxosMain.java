@@ -3,9 +3,8 @@ package main;
 import java.io.IOException;
 import java.util.Scanner;
 
+import commands.CommandManager;
 import nodes.DistributedNode;
-import utils.CommandManager;
-import utils.StringParser;
 
 public class PaxosMain {
 	
@@ -36,7 +35,7 @@ public class PaxosMain {
 			// Initialize connecting node
 			String remoteAddress = args[0];
 			
-			System.out.println("-- Establishing network connection to "+ remoteAddress +" --");
+			System.out.println("-- Establishing network cOonnection to "+ remoteAddress +" --");
 			if (paxosNode.joinNetwork(remoteAddress)) {
 				System.out.println("-- Connection with network established --");
 			} else {
@@ -52,22 +51,7 @@ public class PaxosMain {
 		
 		while (!quitFlag) {
 			System.out.println("Input a command, 'help' for valid commands, or 'exit' to shutdown the node: ");
-			
-			String[] cmd = StringParser.splitWords(cmdStream.nextLine().trim());
-			if (!CommandManager.isValidCommand(cmd)) {
-				System.out.println("Invalid command");
-				continue;
-			}
-			
-			if (cmd[0] == "put") {
-				
-			} else if (cmd[0] == "get") {
-				
-			} else if (cmd[0] == "help") {
-				
-			} else if (cmd[0] == "exit") {
-				break;
-			}
+			CommandManager.processCommand(cmdStream.nextLine().trim());
 		}
 		
 		System.out.println("-- Shutting down paxos node --");

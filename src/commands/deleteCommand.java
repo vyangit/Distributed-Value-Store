@@ -1,11 +1,12 @@
 package commands;
 
 import enums.CommandPrefix;
+import exceptions.InvalidCommandArgumentException;
 
 public class DeleteCommand extends Command{
 
-	public DeleteCommand(String key) {
-		super(CommandPrefix.DELETE, key, null);
+	public DeleteCommand(String key) throws InvalidCommandArgumentException {
+		super(CommandPrefix.DELETE, key, null, "delete <key>", null);
 	}
 
 	@Override
