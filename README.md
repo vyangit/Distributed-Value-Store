@@ -1,5 +1,5 @@
 # paxos-nodes
-Implementation of the paxos algorithm used to manage a copy of a distributed table on each node
+Implementation of the paxos algorithm used to manage a copy of a distributed table on each node. This implementation is purely made for learning purposes.
 
 ## Quick introduction to the Paxos concept:
 Lamport's simplified write up: https://lamport.azurewebsites.net/pubs/paxos-simple.pdf  
