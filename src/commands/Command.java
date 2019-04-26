@@ -17,6 +17,10 @@ public abstract class Command {
 	private HashSet<String> validArgs;
 	private final String usageInstructions;
 	
+
+	protected Command(CommandPrefix commandType, String usageInstructions, HashSet<String> args) throws InvalidCommandArgumentException {
+		this(commandType, null, null, usageInstructions, args);
+	}
 	
 	protected Command(CommandPrefix commandType, String key, String value, String usageInstructions, HashSet<String> args) throws InvalidCommandArgumentException {
 		this.commandType = commandType;
@@ -32,15 +36,12 @@ public abstract class Command {
 		}
 	}
 	
-	public String toString() {
-		return String.format("%s key:%s val:%s", commandType.toString(), this.key, this.value);
-	}
+	public abstract String toString();
 	
 	public String getUsage() {
 		return String.format("Usage: %s", usageInstructions);
 	}
-	
-	
+
 	private String findFirstInvalidArg() {
 		if (args != null) {
 			for (String arg: args) {

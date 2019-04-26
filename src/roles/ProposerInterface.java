@@ -1,5 +1,6 @@
 package roles;
 
+import commands.Command;
 import requests.AcceptRequest;
 import requests.ProposalRequest;
 
@@ -12,7 +13,7 @@ import requests.ProposalRequest;
  * 
  */
 public interface ProposerInterface {
-	void proposeTransaction(ProposalRequest proposal);
+	void proposeTransaction(Command[] commands);
 	void prepareTransaction(ProposalRequest proposal);
 	void requestAccept(AcceptRequest acceptReq);
 }

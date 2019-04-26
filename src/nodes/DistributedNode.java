@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import commands.Command;
 import requests.AcceptRequest;
 import requests.ElectionRequest;
 import requests.JoinNetworkRequest;
@@ -312,7 +313,8 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	}
 	
 	@Override
-	public void proposeTransaction(ProposalRequest proposal) {
+	public void proposeTransaction(Command[] commands) {
+		ProposalRequest proposal = new ProposalRequest(this.nodeId, commands);
 		if (isPaxosLeader) {
 			prepareTransaction(proposal);
 		} else {

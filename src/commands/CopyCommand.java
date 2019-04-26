@@ -4,8 +4,12 @@ import enums.CommandPrefix;
 import exceptions.InvalidCommandArgumentException;
 
 public class CopyCommand extends Command{
-	public CopyCommand() throws InvalidCommandArgumentException {
+	
+	public String filePath;
+	
+	public CopyCommand(String filePath) throws InvalidCommandArgumentException {
 		super(CommandPrefix.COPY, null, null, "copy", null);
+		this.filePath = filePath;
 	}
 
 	@Override
