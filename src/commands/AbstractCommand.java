@@ -14,16 +14,17 @@ public abstract class AbstractCommand {
 	public HashSet<String> args;
 	private HashSet<String> validArgs;
 	private final String usageInstructions;
-	
 
 	protected AbstractCommand(CommandPrefix commandType, String usageInstructions, HashSet<String> args) throws InvalidCommandArgumentException {
 		this.commandType = commandType;
 		this.usageInstructions = usageInstructions;
 		this.args = args;
 		
-		String invalidArg = findFirstInvalidArg();
-		if (!invalidArg.isEmpty()) {
-			throw new InvalidCommandArgumentException(invalidArg);
+		if (args != null) {
+			String invalidArg = findFirstInvalidArg();
+			if (!invalidArg.isEmpty()) {
+				throw new InvalidCommandArgumentException(invalidArg);
+			}
 		}
 	}
 	

@@ -1,7 +1,6 @@
 package commands;
 
 import java.io.IOException;
-import java.util.HashSet;
 
 import enums.CommandPrefix;
 import exceptions.InvalidCommandArgumentException;
@@ -13,8 +12,8 @@ public class ProcessFileCommand extends AbstractDistributedCommand{
 	public final String filePath;
 	public final AbstractCommand[] commands;
 	
-	protected ProcessFileCommand(CommandPrefix commandType, String usageInstructions, HashSet<String> args, String filePath) throws InvalidCommandArgumentException, IOException, InvalidCommandException {
-		super(commandType, usageInstructions, args);
+	protected ProcessFileCommand(String filePath) throws InvalidCommandArgumentException, IOException, InvalidCommandException {
+		super(CommandPrefix.PROCESS, "process <file_name>", null);
 		this.filePath = filePath;
 		this.commands = CommandFileParser.parseCommandFile(filePath);
 	}

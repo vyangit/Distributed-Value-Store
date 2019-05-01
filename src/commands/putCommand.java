@@ -8,7 +8,7 @@ public class PutCommand extends AbstractDistributedCommand{
 	public final String value;
 	
 	public PutCommand(String key, String value) throws InvalidCommandArgumentException {
-		super(CommandPrefix.DELETE, "put <key> <value>", null);
+		super(CommandPrefix.PUT, "put <key> <value>", null);
 		this.key = key;
 		this.value = value;
 	}

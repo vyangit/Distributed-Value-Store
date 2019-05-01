@@ -7,7 +7,7 @@ public class GetCommand extends AbstractCommand{
 	public final String key;
 	
 	public GetCommand(String key) throws InvalidCommandArgumentException {
-		super(CommandPrefix.DELETE,"get <key>", null);
+		super(CommandPrefix.GET, "get <key>", null);
 		this.key = key;
 	}
 

@@ -82,10 +82,12 @@ public class DistributedTable {
 	
 	private void updateValue(String key, String value) {
 		transactionStore.put(key, value);
+		System.out.println("Put successful");
 	}
 	
 	private void deleteValue(String key) {
 		transactionStore.remove(key);
+		System.out.println("Delete successful");
 	}
 }
 

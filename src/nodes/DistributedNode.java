@@ -8,6 +8,7 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -319,11 +320,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			prepareTransaction(proposal);
 		} else {
 			try {
-				Socket leaderSocket = new Socket(paxosLeaderIp, paxosLeaderPort);
-				ObjectOutputStream out = new ObjectOutputStream(leaderSocket.getOutputStream());
-				out.writeObject(proposal);
-				out.flush();
-				leaderSocket.close();
+				sendObjectToLeader(proposal);
 			} catch (IOException e) {
 				System.out.println("Proposal was not uploaded to leader");
 			}			
@@ -342,16 +339,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			Thread prepareThread = new Thread(new Runnable() {
 				public void run() {
 					try {
-						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.serverPort);
-						ObjectOutputStream out = null;
-						
-						if (remoteSocket.isConnected()) {
-							out = new ObjectOutputStream(remoteSocket.getOutputStream());
-						}
-						out.writeObject(prepareReq);
-						out.flush();
-
-						remoteSocket.close();
+						sendObjectToAddress(prepareReq, connDetails.serverIp, connDetails.serverPort);
 					} catch (Exception e) {
 						// Stop operation because the heartbeat should take care of socket severance							
 					} finally {
@@ -363,7 +351,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			prepareThread.start();
 		}
 		
-		while (numResponses.get() != nodeConnections.size()) {
+		while (numResponses.get() < nodeConnections.size()) {
 			// Wait for responses
 		}
 		
@@ -374,6 +362,23 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		}
 		return;
 	}
+	
+	@Override
+	public void promiseTransaction(PrepareRequest prepareReq) {
+		PromiseResponse promise;
+		if (reqPendingAcceptance != null) {
+			promise = new PromiseResponse(false, reqPendingAcceptance.getRequest());
+		} else {
+			promise = new PromiseResponse(true, null);
+		}
+		
+		try {
+			sendObjectToLeader(promise);
+		} catch (Exception e) {
+			System.out.println("Promise failed to send");
+		}
+		
+	}
 
 	@Override
 	public void requestAccept(AcceptRequest acceptReq) {
@@ -381,16 +386,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			new Thread(new Runnable() {
 				public void run() {
 					try {
-						Socket remoteSocket = new Socket(connDetails.serverIp, connDetails.serverPort);
-						ObjectOutputStream out = null;
-						
-						if (remoteSocket.isConnected()) {
-							out = new ObjectOutputStream(remoteSocket.getOutputStream());
-						}
-						out.writeObject(acceptReq);
-						out.flush();
-						
-						remoteSocket.close();
+						sendObjectToAddress(acceptReq, connDetails.serverIp, connDetails.serverPort);
 					} catch (Exception e) {
 						// Stop operation because the heartbeat should take care of socket severance							
 					}
@@ -398,12 +394,13 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			}).start();
 		}
 		
-		return;
-	}
-
-	@Override
-	public void promiseTransaction(PromiseResponse promise) {
+		reqPendingAcceptance = new RequestPendingConsensus<>(acceptReq, majority);
+		if (reqPendingAcceptance.checkIfAccepted()) {
+			reqPendingAcceptance = null;
+			acceptProposal(acceptReq);
+		}
 		
+		return;
 	}
 
 	@Override
@@ -477,7 +474,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 							}
 						} else { //A paxos follower
 							if (packet instanceof PrepareRequest) {
-								
+								promiseTransaction((PrepareRequest) packet);
 							}
 						}
 						
@@ -499,6 +496,24 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	public ServerSocket getPaxosSocket() {
 		return this.paxosSocket;
+	}
+	
+	private void sendObjectToLeader(Object packet) throws UnknownHostException, IOException {
+		sendObjectToAddress(packet, paxosLeaderIp, paxosLeaderPort);
+	}
+	
+	private void sendObjectToAddress(Object packet, String ipAddress, int port) throws UnknownHostException, IOException {
+		Socket socket = new Socket(ipAddress, port);
+		ObjectOutputStream out = null;
+		if (socket.isConnected()) {
+			out = new ObjectOutputStream(socket.getOutputStream());
+		} else {
+			socket.close();
+			throw new IOException();
+		}
+		out.writeObject(packet);
+		out.flush();
+		socket.close();
 	}
 	
 	private String concatPortToIp(String ip, int port) {

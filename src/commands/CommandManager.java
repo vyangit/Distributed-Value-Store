@@ -5,8 +5,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 
-import exceptions.InvalidCommandArgumentException;
-import exceptions.InvalidCommandException;
 import nodes.DistributedNode;
 import nodes.DistributedTable;
 
@@ -14,34 +12,27 @@ public class CommandManager {
 	public static void processCommand(String cmd) {
 		AbstractCommand command = null;
 		
-		try {
-			command = CommandParser.parseCommand(cmd);
-			if (command == null) {
-				System.out.println("An unknown error has occurred when processing the command");
+		command = CommandParser.parseCommand(cmd);
+		if (command == null) {
+			return;
+		}
+		
+		switch(command.commandType) {
+			case GET: 
+				processGet((GetCommand) command); 
+				break;
+			case COPY: 
+				processCopy((CopyCommand) command); 
+				break;
+			case HELP: 
+				processHelp((HelpCommand) command); 
+				break;
+			case PROCESS:
+			case PUT:
+			case DELETE: 
+				processNodeCommand((AbstractDistributedCommand) command);
+			default: 
 				return;
-			}
-			
-			switch(command.commandType) {
-				case GET: 
-					processGet((GetCommand) command); 
-					break;
-				case COPY: 
-					processCopy((CopyCommand) command); 
-					break;
-				case HELP: 
-					processHelp((HelpCommand) command); 
-					break;
-				case PROCESS:
-				case PUT:
-				case DELETE: 
-					processNodeCommand((AbstractDistributedCommand) command);
-				default: 
-					return;
-			}
-		} catch (InvalidCommandArgumentException e) {
-			System.out.println("Invalid command");
-		} catch (InvalidCommandException e) {
-			System.out.println("Invalid command parameter");			
 		}
 	}
 

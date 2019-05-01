@@ -35,7 +35,7 @@ public class PaxosMain {
 			// Initialize connecting node
 			String remoteAddress = args[0];
 			
-			System.out.println("-- Establishing network cOonnection to "+ remoteAddress +" --");
+			System.out.println("-- Establishing network connection to "+ remoteAddress +" --");
 			if (paxosNode.joinNetwork(remoteAddress)) {
 				System.out.println("-- Connection with network established --");
 			} else {
