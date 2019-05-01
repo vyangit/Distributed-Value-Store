@@ -3,13 +3,13 @@ package commands;
 import enums.CommandPrefix;
 import exceptions.InvalidCommandArgumentException;
 
-public class CopyCommand extends Command{
+public class CopyCommand extends AbstractLocalCommand{
 	
-	public String filePath;
+	public String destFilePath;
 	
-	public CopyCommand(String filePath) throws InvalidCommandArgumentException {
-		super(CommandPrefix.COPY, null, null, "copy", null);
-		this.filePath = filePath;
+	public CopyCommand(String destFilePath) throws InvalidCommandArgumentException {
+		super(CommandPrefix.COPY, "copy", null);
+		this.destFilePath = destFilePath;
 	}
 
 	@Override

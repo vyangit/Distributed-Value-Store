@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import commands.Command;
+import commands.AbstractCommand;
 import commands.CommandParser;
 import exceptions.InvalidCommandArgumentException;
 import exceptions.InvalidCommandException;
@@ -21,19 +21,19 @@ public class CommandFileParser {
 	 * @throws InvalidCommandArgumentException
 	 * @throws InvalidCommandException
 	 */
-	public static Command[] parseCommandFile(String filePath) throws IOException, InvalidCommandArgumentException, InvalidCommandException {
+	public static AbstractCommand[] parseCommandFile(String filePath) throws IOException, InvalidCommandArgumentException, InvalidCommandException {
 		File cmdFile = new File(filePath);
 		if (cmdFile.exists() || cmdFile.canRead()) {
 			throw new IOException("Invalid file");
 		}
 
 		BufferedReader fileIn = new BufferedReader(new FileReader(cmdFile));
-		List<Command> parsedCmds = new ArrayList<Command>();
+		List<AbstractCommand> parsedCmds = new ArrayList<AbstractCommand>();
 		
 		while (fileIn.ready()) {
 			parsedCmds.add(CommandParser.parseCommand(fileIn.readLine()));
 		}
 		fileIn.close();
-		return parsedCmds.toArray(new Command[parsedCmds.size()]);
+		return parsedCmds.toArray(new AbstractCommand[parsedCmds.size()]);
 	}
 }

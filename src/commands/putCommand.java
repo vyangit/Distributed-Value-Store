@@ -3,9 +3,14 @@ package commands;
 import enums.CommandPrefix;
 import exceptions.InvalidCommandArgumentException;
 
-public class PutCommand extends Command{
-	public PutCommand(String key, String val) throws InvalidCommandArgumentException {
-		super(CommandPrefix.DELETE, key, val, "put <key> <value>", null);
+public class PutCommand extends AbstractDistributedCommand{
+	public final String key;
+	public final String value;
+	
+	public PutCommand(String key, String value) throws InvalidCommandArgumentException {
+		super(CommandPrefix.DELETE, "put <key> <value>", null);
+		this.key = key;
+		this.value = value;
 	}
 
 	@Override

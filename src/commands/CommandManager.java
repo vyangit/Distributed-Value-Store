@@ -9,11 +9,10 @@ import exceptions.InvalidCommandArgumentException;
 import exceptions.InvalidCommandException;
 import nodes.DistributedNode;
 import nodes.DistributedTable;
-import utils.CommandFileParser;
 
 public class CommandManager {
 	public static void processCommand(String cmd) {
-		Command command = null;
+		AbstractCommand command = null;
 		
 		try {
 			command = CommandParser.parseCommand(cmd);
@@ -23,12 +22,21 @@ public class CommandManager {
 			}
 			
 			switch(command.commandType) {
-				case GET: processGet(command);
-				case PUT: processNodeCommands(command); 
-				case PROCESS: processFile(command); 
-				case DELETE: processNodeCommands(command);
-				case COPY: processCopy(command); 
-				case HELP: getHelp(); 
+				case GET: 
+					processGet((GetCommand) command); 
+					break;
+				case COPY: 
+					processCopy((CopyCommand) command); 
+					break;
+				case HELP: 
+					processHelp((HelpCommand) command); 
+					break;
+				case PROCESS:
+				case PUT:
+				case DELETE: 
+					processNodeCommand((AbstractDistributedCommand) command);
+				default: 
+					return;
 			}
 		} catch (InvalidCommandArgumentException e) {
 			System.out.println("Invalid command");
@@ -37,40 +45,20 @@ public class CommandManager {
 		}
 	}
 
-	private static void processGet(Command command) {
+	private static void processGet(GetCommand command) {
 		System.out.println(DistributedTable.getInstance().getValue(command.key));
 	}
 
-	private static void processNodeCommands(Command command) {
-		Command[] cmds = new Command[1];
-		cmds[0] = command;
+	private static void processNodeCommand(AbstractDistributedCommand command) {
 		try {
-			DistributedNode.getInstance().proposeTransaction(cmds);
+			DistributedNode.getInstance().proposeTransaction(command);
 		} catch (IOException e) {
 			System.out.println("Node error");
 		}
 	}
 	
-	private static void processNodeCommands(Command[] commands) {
-		try {
-			DistributedNode.getInstance().proposeTransaction(commands);
-		} catch (IOException e) {
-			System.out.println("Node error");
-		}
-	}
-	
-	private static void processFile(Command command) throws InvalidCommandArgumentException, InvalidCommandException {
-		ProcessFileCommand fileCmd = (ProcessFileCommand) command;
-		try {
-			processNodeCommands(CommandFileParser.parseCommandFile(fileCmd.filePath));
-		} catch (IOException e) {
-			System.out.println("Invalid file commands found");
-		}
-	}
-	
-	private static void processCopy(Command command) {
-		CopyCommand copyCmd = (CopyCommand) command;
-		File copyFile = new File(copyCmd.filePath);
+	private static void processCopy(CopyCommand command) {
+		File copyFile = new File(command.destFilePath);
 		try {
 			if (copyFile.exists()) {
 				System.out.println("File already exists. Process aborted to prevent override");
@@ -92,7 +80,7 @@ public class CommandManager {
 		}
 	}
 	
-	private static void getHelp() {
+	private static void processHelp(HelpCommand command) {
 		//TODO: write help manual
 		System.out.println("Help wanted");
 		

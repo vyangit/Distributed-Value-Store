@@ -1,6 +1,6 @@
 package roles;
 
-import commands.Command;
+import commands.AbstractDistributedCommand;
 import requests.AcceptRequest;
 import requests.ProposalRequest;
 
@@ -13,7 +13,7 @@ import requests.ProposalRequest;
  * 
  */
 public interface ProposerInterface {
-	void proposeTransaction(Command[] commands);
+	void proposeTransaction(AbstractDistributedCommand command);
 	void prepareTransaction(ProposalRequest proposal);
 	void requestAccept(AcceptRequest acceptReq);
 }

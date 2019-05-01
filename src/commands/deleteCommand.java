@@ -3,10 +3,12 @@ package commands;
 import enums.CommandPrefix;
 import exceptions.InvalidCommandArgumentException;
 
-public class DeleteCommand extends Command{
-
+public class DeleteCommand extends AbstractDistributedCommand{
+	public final String key;
+	
 	public DeleteCommand(String key) throws InvalidCommandArgumentException {
-		super(CommandPrefix.DELETE, key, null, "delete <key>", null);
+		super(CommandPrefix.DELETE, "delete <key>", null);
+		this.key = key;
 	}
 
 	@Override

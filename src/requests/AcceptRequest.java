@@ -1,14 +1,14 @@
 package requests;
 
-import commands.Command;
+import commands.AbstractDistributedCommand;
 import structs.ProposalId;
 
 public class AcceptRequest {
 	public ProposalId proposalId;
-	public Command[] cmds;
+	public AbstractDistributedCommand command;
 	
-	public AcceptRequest(ProposalId proposalId, Command[] cmds) {
+	public AcceptRequest(ProposalId proposalId, AbstractDistributedCommand command) {
 		this.proposalId = proposalId;
-		this.cmds = cmds;
+		this.command = command;
 	}
 }

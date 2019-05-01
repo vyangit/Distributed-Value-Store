@@ -6,7 +6,8 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.PriorityQueue;
 
-import commands.Command;
+import commands.AbstractCommand;
+import commands.ProcessFileCommand;
 import requests.AcceptRequest;
 import structs.DateParser;
 
@@ -75,8 +76,7 @@ public class TableUpdateLogger {
 			return false;
 		}
 		
-		DistributedTable table = DistributedTable.getInstance();
-		table.processRequest(commandHistory);
+		DistributedTable.getInstance().processRequest(commandHistory);
 		lowestIndex++;
 		return true;
 	}
@@ -93,10 +93,16 @@ public class TableUpdateLogger {
 				AcceptRequest acceptedChange = log.peek();
 				// Write the header
 				out.write(acceptedChange.proposalId.toString().getBytes()); // write header
-				for (Command cmd: acceptedChange.cmds) {
-					out.write("\n".getBytes()); // Start new line
-					out.write(String.format("%s\n", cmd.toString()).getBytes()); // write command
-				}
+				AbstractCommand cmd = acceptedChange.command;
+				
+				
+				if (cmd instanceof ProcessFileCommand) {
+					for (AbstractCommand subCommand: ((ProcessFileCommand)cmd).commands) {
+						out.write(String.format("\n%s", subCommand.toString()).getBytes()); // write command	
+					}
+				} else {
+					out.write(String.format("\n%s", cmd.toString()).getBytes()); // write command	
+				}				
 				
 				// Change successfully logged
 				out.flush();

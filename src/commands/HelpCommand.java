@@ -3,9 +3,9 @@ package commands;
 import enums.CommandPrefix;
 import exceptions.InvalidCommandArgumentException;
 
-public class HelpCommand extends Command{
+public class HelpCommand extends AbstractLocalCommand{
 	public HelpCommand() throws InvalidCommandArgumentException {
-		super(CommandPrefix.HELP, null, null, "help", null);
+		super(CommandPrefix.HELP, "help", null);
 	}
 
 	@Override

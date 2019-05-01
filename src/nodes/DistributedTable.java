@@ -1,12 +1,15 @@
 package nodes;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 
-import commands.Command;
-import enums.CommandPrefix;
+import commands.AbstractCommand;
+import commands.AbstractDistributedCommand;
+import commands.DeleteCommand;
+import commands.GetCommand;
+import commands.ProcessFileCommand;
+import commands.PutCommand;
 import requests.AcceptRequest;
 
 public class DistributedTable {
@@ -25,21 +28,22 @@ public class DistributedTable {
 	}
 	
 	public synchronized boolean processRequest(AcceptRequest changes) {
-		boolean isRequestingNode;
-		try {
-			isRequestingNode = DistributedNode.getInstance().nodeId == changes.proposalId.nodeId;
-		} catch (IOException e) {
-			return false;
+		AbstractDistributedCommand cmd = changes.command;
+		
+		switch(cmd.commandType) {
+		case DELETE:
+			deleteValue(((DeleteCommand) cmd).key);
+			break;
+		case PROCESS:
+			processCommands(((ProcessFileCommand)cmd).commands);
+			break;
+		case PUT:
+			updateValue(((PutCommand)cmd).key, ((PutCommand)cmd).value);
+			break;
+		default:
+			return false;		
 		}
-		for (Command cmd: changes.cmds){
-			if (isRequestingNode && cmd.commandType == CommandPrefix.GET) {
-				System.out.printf("GET %s: %s", cmd.key, cmd.value);
-			} else if (cmd.commandType == CommandPrefix.PUT) {
-				updateValue(cmd.key, cmd.value);
-			} else if (cmd.commandType == CommandPrefix.DELETE) {
-				deleteValue(cmd.key);
-			}
-		}
+	
 		return true;
 	}
 
@@ -56,6 +60,24 @@ public class DistributedTable {
 		}
 		
 		return tableCopy;
+	}
+	
+	private synchronized void processCommands(AbstractCommand[] commands) {
+		for (AbstractCommand cmd: commands) {
+			switch(cmd.commandType) {
+			case DELETE:
+				deleteValue(((DeleteCommand) cmd).key);
+				break;
+			case GET:
+				System.out.println(getValue(((GetCommand)cmd).key));
+				break;
+			case PUT:
+				updateValue(((PutCommand)cmd).key, ((PutCommand)cmd).value);
+				break;				
+			default:
+				break;
+			}
+		}
 	}
 	
 	private void updateValue(String key, String value) {
