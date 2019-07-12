@@ -1,4 +1,4 @@
-# paxos-nodes
+# Distributed-Value-Store
 Implementation of the paxos algorithm used to manage a copy of a distributed table on each node. This implementation is purely made for learning purposes.
 
 #### Concepts/ideas utilized in this educational project:
