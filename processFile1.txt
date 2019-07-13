@@ -1,0 +1,8 @@
+put 2 3
+get 2
+put 4 4
+put 10 2
+put -10 20
+put hello world
+get hello
+get -10

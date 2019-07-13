@@ -23,15 +23,21 @@ public class CommandFileParser {
 	 */
 	public static AbstractCommand[] parseCommandFile(String filePath) throws IOException, InvalidCommandArgumentException, InvalidCommandException {
 		File cmdFile = new File(filePath);
-		if (cmdFile.exists() || cmdFile.canRead()) {
+		if (!cmdFile.exists() || !cmdFile.canRead()) {
 			throw new IOException("Invalid file");
 		}
 
 		BufferedReader fileIn = new BufferedReader(new FileReader(cmdFile));
 		List<AbstractCommand> parsedCmds = new ArrayList<AbstractCommand>();
+		int lineCount = 1;
 		
 		while (fileIn.ready()) {
-			parsedCmds.add(CommandParser.parseCommand(fileIn.readLine()));
+			AbstractCommand cmd = CommandParser.parseCommand(fileIn.readLine());
+			if (cmd == null) {
+				throw new IOException("Invalid file command on line: "+ lineCount);
+			}
+			lineCount++;
+			parsedCmds.add(cmd);
 		}
 		fileIn.close();
 		return parsedCmds.toArray(new AbstractCommand[parsedCmds.size()]);

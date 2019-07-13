@@ -47,15 +47,16 @@ public class PaxosMain {
 		
 		// Common paxos node logic
 		Scanner cmdStream = new Scanner(System.in);
-		boolean quitFlag = false;
+		boolean shutdownFlag = false;
 		
-		while (!quitFlag) {
+		while (!shutdownFlag) {
 			System.out.println("Input a command, 'help' for valid commands, or 'exit' to shutdown the node: ");
-			CommandManager.processCommand(cmdStream.nextLine().trim());
+			shutdownFlag = CommandManager.processCommand(cmdStream.nextLine().trim());
 		}
 		
-		System.out.println("-- Shutting down paxos node --");
+		System.out.println("-- Shutting down command stream --");
 		cmdStream.close();
+		System.out.println("-- Shutting down paxos node --");
 		System.exit(0);
 	}
 }

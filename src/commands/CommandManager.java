@@ -9,12 +9,12 @@ import nodes.DistributedNode;
 import nodes.DistributedTable;
 
 public class CommandManager {
-	public static void processCommand(String cmd) {
+	public static boolean processCommand(String cmd) {
 		AbstractCommand command = null;
 		
 		command = CommandParser.parseCommand(cmd);
 		if (command == null) {
-			return;
+			return false;
 		}
 		
 		switch(command.commandType) {
@@ -31,9 +31,13 @@ public class CommandManager {
 			case PUT:
 			case DELETE: 
 				processNodeCommand((AbstractDistributedCommand) command);
+				break;
+			case EXIT:
+				return true;
 			default: 
-				return;
+				return false;
 		}
+		return false;
 	}
 
 	private static void processGet(GetCommand command) {

@@ -10,4 +10,5 @@ public enum CommandPrefix {
 	PUT, // <key> <value>
 	DELETE, // <key>
 	PROCESS, // <file_name>
+	EXIT
 }

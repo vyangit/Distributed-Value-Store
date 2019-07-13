@@ -5,7 +5,6 @@ import exceptions.InvalidCommandException;
 
 public class CommandParser {
 	public static AbstractCommand parseCommand(String commandString) {
-		//TODO: Implement parsing of command string
 		try {
 			String[] args = commandString.split(" ");
 			String prefix = args[0];
@@ -21,13 +20,16 @@ public class CommandParser {
 				return new CopyCommand(args[1], args[2]);
 			}  else if (prefix.equals("help") && args.length == 1) {
 				return new HelpCommand();
+			} else if (prefix.equals("exit")) {
+				return new ExitCommand();
 			}
 		} catch (InvalidCommandArgumentException e) {
 			System.out.println("Invalid command");
 		} catch (InvalidCommandException e) {
 			System.out.println("Invalid command parameter");			
 		} catch (Exception e) {
-			System.out.println("An unknown error has occurred when processing the command");
+			String msg = e.getMessage() == null ? "An unknown error has occurred when processing the command" : e.getMessage();
+			System.out.println(msg);
 		}
 		
 		return null;
