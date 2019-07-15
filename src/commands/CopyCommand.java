@@ -9,14 +9,14 @@ import exceptions.InvalidCommandArgumentException;
 public class CopyCommand extends AbstractLocalCommand{
 	
 	public final String fileName;
-	public final String destFilePath;
+	public final String destFileDir;
 	public final String completePath;
 	
-	public CopyCommand(String fileName, String destFilePath) throws InvalidCommandArgumentException {
+	public CopyCommand(String fileName, String destFileDir) throws InvalidCommandArgumentException {
 		super(CommandPrefix.COPY, "copy", null);
-		this.destFilePath = destFilePath;
+		this.destFileDir = destFileDir;
 		this.fileName = fileName;
-		File dir = new File(destFilePath);
+		File dir = new File(destFileDir);
 		File file = null;
 		String filePath = null;
 		

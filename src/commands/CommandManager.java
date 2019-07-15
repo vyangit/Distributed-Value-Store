@@ -53,7 +53,7 @@ public class CommandManager {
 	}
 	
 	private static void processCopy(CopyCommand command) {
-		File copyFile = new File(command.destFilePath);
+		File copyFile = new File(command.destFileDir);
 		try {
 			if (copyFile.exists()) {
 				System.out.println("File already exists. Process aborted to prevent override");
@@ -77,7 +77,13 @@ public class CommandManager {
 	
 	private static void processHelp(HelpCommand command) {
 		//TODO: write help manual
-		System.out.println("Help wanted");
+		System.out.printf("Paxos Node v1 help manual:\n"
+				+ "	GET <key> : Retrieves value of specified key, else returns null\n"
+				+ "	PUT <key> <value> : Assigns or updates specified key with indicated value\n"
+				+ "	COPY <fileName> <destDirPath> : Creates a file that lists the key-value pairs of the table\n"
+				+ "	PROCESS <filePath> : Loads and executes a command file\n"
+				+ "	DELETE <key> : Deletes the value at the indicated key\n"
+				+ "	EXIT : exits the program\n");
 		
 	}
 }

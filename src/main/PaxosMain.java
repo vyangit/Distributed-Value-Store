@@ -30,7 +30,7 @@ public class PaxosMain {
 		}
 		
 		if (args.length == 0) {
-			// Initialed seeder node does nothing
+			// Initial seeder node does nothing
 		} else if (args.length == 1){
 			// Initialize connecting node
 			String remoteAddress = args[0];
@@ -51,6 +51,7 @@ public class PaxosMain {
 		
 		while (!shutdownFlag) {
 			System.out.println("Input a command, 'help' for valid commands, or 'exit' to shutdown the node: ");
+			System.out.printf("$ ");
 			shutdownFlag = CommandManager.processCommand(cmdStream.nextLine().trim());
 		}
 		

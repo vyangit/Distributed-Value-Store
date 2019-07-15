@@ -1,11 +1,11 @@
 package requests;
 
-public class JoinNetworkRequest {
-	int paxosPort;
-	String serverIp;
+public class JoinNetworkRequest implements java.io.Serializable{
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 2534455269863572355L;
 	
-	public JoinNetworkRequest(String serverIp, int paxosPort) {
-		this.serverIp = serverIp; 
-		this.paxosPort = paxosPort;
+	public JoinNetworkRequest() {
 	}
 }

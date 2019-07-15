@@ -81,7 +81,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	private PriorityQueue<ProposalRequest> proposalsToServe;
 	private TableUpdateLogger updateLog;
-	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote ip address, value: details of connection... is managed by paxos leader
+	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote node id, value: details of connection... is managed by paxos leader
 	private Queue<Integer> reusableNodeIds;
 	
 	/**
@@ -123,13 +123,13 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		Socket connection = null;
 		try {
 			connection = new Socket(vals[0].trim(),Integer.parseInt(vals[1].trim()));
-			ObjectInputStream inStream = new ObjectInputStream(connection.getInputStream());
 			ObjectOutputStream outStream = new ObjectOutputStream(connection.getOutputStream());
 			
-			JoinNetworkRequest connectReq = new JoinNetworkRequest(this.serverIp, this.paxosSocket.getLocalPort());
+			JoinNetworkRequest connectReq = new JoinNetworkRequest();
 			outStream.writeObject(connectReq);
 			outStream.flush();
 			
+			ObjectInputStream inStream = new ObjectInputStream(connection.getInputStream());
 			while (inStream.available() == 0) {
 				// Wait for response from connection
 				// TODO: Set a timeout
@@ -158,8 +158,10 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			inStream = new ObjectInputStream(connection.getInputStream());
 			outStream = new ObjectOutputStream(connection.getOutputStream());
 			
-			outStream.writeObject(new NodeIdRequest());
+			ConnectionDetails details = new ConnectionDetails(serverIp, serverSocket.getLocalPort(), paxosSocket.getLocalPort(), heartbeatSocket.getLocalPort());
+			outStream.writeObject(new NodeIdRequest(details));
 			outStream.flush();
+			
 			// Read packet and double check object class
 			while (inStream.available() == 0) {
 				// Wait for response from connection
@@ -182,6 +184,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			
 			connection.close();
 		} catch (Exception e) {
+			System.out.println(e.getMessage());
 			return false;
 		}
 		return true;
@@ -421,11 +424,32 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						Socket clientSocket = serverSocket.accept();
 						ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
 						ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
-						while (in.available() != 0 && !clientSocket.isInputShutdown()) { 
-							// wait until package comes in
+						
+						while (in.available() != 0 || !clientSocket.isInputShutdown()) { 
+							Object packet = in.readObject();
+							
+							if (isPaxosLeader) {
+								if (packet instanceof NodeIdRequest) {
+									NodeIdRequest req = (NodeIdRequest) packet;
+									int nodeId = getNodeId();
+									NodeIdResponse res;
+									if (nodeId == -1) {
+										res = new NodeIdResponse(nodeId, null);
+									} else {
+										nodeConnections.put(nodeId, req.connDetails);
+										res = new NodeIdResponse(nodeId, nodeConnections);
+									}
+									out.writeObject(res);
+									
+								}
+							} else if (packet instanceof JoinNetworkRequest) {
+								JoinNetworkResponse res = new JoinNetworkResponse(paxosLeaderIp, paxosLeaderPort);
+								out.writeObject(res);
+							}
+								
 						}
 					}
-				} catch (IOException e) {
+				} catch (Exception e) {
 					e.printStackTrace();
 				}
 			}
@@ -540,5 +564,16 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 				}
 			}
 		}
+	}
+	
+	private int getNodeId() {
+		int nodeId = -1; 
+		if (reusableNodeIds.isEmpty()) {
+			nodeId = nodeConnections.keySet().stream().reduce(-1, (c1, c2) -> Math.max(c1, c2))+1;
+		} else {
+			nodeId = reusableNodeIds.poll();
+		}
+		
+		return nodeId;
 	}
 }
