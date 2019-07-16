@@ -62,6 +62,16 @@ public class DistributedTable {
 		return tableCopy;
 	}
 	
+	public Hashtable<String, String> copyTable() {
+		Hashtable<String,String> copy = new Hashtable<String,String>();
+		copy.putAll(this.transactionStore);
+		return copy;
+	}
+	
+	public void loadTable(Hashtable<String,String> table) {
+		this.transactionStore = table;
+	}
+	
 	private synchronized void processCommands(AbstractCommand[] commands) {
 		for (AbstractCommand cmd: commands) {
 			switch(cmd.commandType) {

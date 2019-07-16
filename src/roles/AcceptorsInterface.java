@@ -5,5 +5,5 @@ import requests.PrepareRequest;
 
 public interface AcceptorsInterface {
 	public void promiseTransaction(PrepareRequest prepareReq);
-	public void acceptProposal(AcceptRequest acceptedProposal);
+	public void acceptProposal(AcceptRequest acceptReq);
 }

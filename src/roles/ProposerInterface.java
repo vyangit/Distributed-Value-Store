@@ -1,8 +1,8 @@
 package roles;
 
 import commands.AbstractDistributedCommand;
-import requests.AcceptRequest;
 import requests.ProposalRequest;
+import responses.PromiseResponse;
 
 /**
  * @author Victor
@@ -15,5 +15,5 @@ import requests.ProposalRequest;
 public interface ProposerInterface {
 	void proposeTransaction(AbstractDistributedCommand command);
 	void prepareTransaction(ProposalRequest proposal);
-	void requestAccept(AcceptRequest acceptReq);
+	void requestAccept(PromiseResponse promiseRes);
 }

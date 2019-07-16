@@ -26,6 +26,7 @@ import requests.JoinNetworkRequest;
 import requests.NodeIdRequest;
 import requests.PrepareRequest;
 import requests.ProposalRequest;
+import responses.AcceptedResponse;
 import responses.ElectionResponse;
 import responses.JoinNetworkResponse;
 import responses.NodeIdResponse;
@@ -65,24 +66,35 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	/**
 	 * # of nodes needed to reach consensus
 	 */
-	public int majority;
 	
+	// Node data storage structures
 	private static DistributedNode distributedNode;
+	private TableUpdateLogger updateLog;
 	
-	private boolean isPaxosLeader;
-	private boolean paxosNetworkIsPaused; // used to stop the paxos network when a leader has died
-	
+	// Network sockets
 	private ServerSocket serverSocket; // socket is used for downloading logs and connecting to the server
 	private ServerSocket paxosSocket; // socket is used for communicating on the paxos network
 	private ServerSocket heartbeatSocket; // socket used to respond to heartbeat reqs
-	
-	private RequestPendingConsensus<PrepareRequest> reqPendingPromise; // The prepare request that is waiting to be promised
-	private RequestPendingConsensus<AcceptRequest> reqPendingAcceptance; // The accepted value that is still pending acceptance
-	
-	private PriorityQueue<ProposalRequest> proposalsToServe;
-	private TableUpdateLogger updateLog;
+
+	// Paxos state variables
+	private int majority;
+	private boolean isPaxosLeader;
+	private boolean paxosNetworkIsPaused; // used to stop the paxos network when a leader has died
+	private boolean paxosRoundRunning;
 	private ConcurrentHashMap<Integer, ConnectionDetails> nodeConnections; // key: remote node id, value: details of connection... is managed by paxos leader
 	private Queue<Integer> reusableNodeIds;
+	
+	// Proposal & Prepare phase structures
+	private PriorityQueue<ProposalRequest> proposalsToServe;
+	private RequestPendingConsensus<PrepareRequest> reqPendingPromise; // The prepare request that is waiting to be promised
+
+	// Promise phase structures
+	private PrepareRequest lastPromisedPrepareRequest;
+	
+	// Accept & accepted phase structures
+	private RequestPendingConsensus<AcceptRequest> reqPendingAcceptance; // The accepted value that is still pending acceptance
+	private PriorityQueue<AcceptRequest> abortedAcceptsToAttach;
+	private AcceptRequest lastAcceptedRequestNotForgotten; // null if leader acknowledges the accepted, else inconsistent state among nodes
 	
 	/**
 	 * Initializes a distributed node on this machine
@@ -132,7 +144,6 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			ObjectInputStream inStream = new ObjectInputStream(connection.getInputStream());
 			while (inStream.available() == 0) {
 				// Wait for response from connection
-				// TODO: Set a timeout
 			}
 			
 			// Read packet and double check object class
@@ -181,6 +192,7 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 			if (nodeIdRes.nodeId < 0) return false;
 			this.nodeId = nodeIdRes.nodeId;
 			this.nodeConnections.putAll(nodeIdRes.remoteConnections);
+			DistributedTable.getInstance().loadTable(nodeIdRes.tableCopy);
 			
 			connection.close();
 		} catch (Exception e) {
@@ -333,46 +345,38 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 	
 	@Override
 	public void prepareTransaction(ProposalRequest proposal) {
-		AtomicInteger numResponses = new AtomicInteger(1);
-		AtomicInteger numAcks = new AtomicInteger(1);
+		if (paxosRoundRunning) return;
+		paxosRoundRunning = true;
 		PrepareRequest prepareReq = new PrepareRequest(proposal.proposalId);
+		reqPendingPromise = new RequestPendingConsensus<PrepareRequest>(prepareReq, this.majority);
 		
 		// Propose value for all acceptors and wait for ack/nack
 		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
 			Thread prepareThread = new Thread(new Runnable() {
 				public void run() {
 					try {
-						sendObjectToAddress(prepareReq, connDetails.serverIp, connDetails.serverPort);
+						sendObjectToAddress(prepareReq, connDetails.serverIp, connDetails.paxosPort);
 					} catch (Exception e) {
-						// Stop operation because the heartbeat should take care of socket severance							
-					} finally {
-						numResponses.getAndIncrement();
+						// Stop operation. The heartbeat should take care of socket severance
+						reqPendingPromise.incrementNacks();
 					}
 				} 
 			});
 			
 			prepareThread.start();
 		}
-		
-		while (numResponses.get() < nodeConnections.size()) {
-			// Wait for responses
-		}
-		
-		if (numAcks.get() >= this.majority) {
-			// Sent out request to accept the change
-			AcceptRequest acceptReq = new AcceptRequest(proposal.proposalId, proposal.command);
-			requestAccept(acceptReq);
-		}
-		return;
 	}
 	
 	@Override
 	public void promiseTransaction(PrepareRequest prepareReq) {
 		PromiseResponse promise;
-		if (reqPendingAcceptance != null) {
-			promise = new PromiseResponse(false, reqPendingAcceptance.getRequest());
+		if (lastPromisedPrepareRequest != null && lastPromisedPrepareRequest.proposalId.timestamp.compareTo(prepareReq.proposalId.timestamp) >= 0) {
+			promise = new PromiseResponse(prepareReq.proposalId, false, null);
+		} else if (reqPendingAcceptance != null) {
+			promise = new PromiseResponse(prepareReq.proposalId, true, reqPendingAcceptance.getRequest());
 		} else {
-			promise = new PromiseResponse(true, null);
+			lastPromisedPrepareRequest = prepareReq;
+			promise = new PromiseResponse(prepareReq.proposalId, true, null);
 		}
 		
 		try {
@@ -380,40 +384,81 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		} catch (Exception e) {
 			System.out.println("Promise failed to send");
 		}
-		
 	}
 
 	@Override
-	public void requestAccept(AcceptRequest acceptReq) {
-		for (ConnectionDetails connDetails: this.nodeConnections.values()) {
-			new Thread(new Runnable() {
-				public void run() {
-					try {
-						sendObjectToAddress(acceptReq, connDetails.serverIp, connDetails.serverPort);
-					} catch (Exception e) {
-						// Stop operation because the heartbeat should take care of socket severance							
-					}
-				} 
-			}).start();
+	public void requestAccept(PromiseResponse promiseRes) {
+		if (reqPendingPromise.isPending() && promiseRes.proposalId.equals(reqPendingPromise.getRequest().proposalId)) {
+			if (promiseRes.ack) { 
+				reqPendingPromise.incrementAcks();
+			} else if (promiseRes.abortedAcceptRequest != null) {
+				abortedAcceptsToAttach.add(promiseRes.abortedAcceptRequest);
+				reqPendingPromise.incrementAcks();
+			} else {
+				reqPendingPromise.incrementNacks();
+				//TODO: Implement I'm not the leader protocol
+			}
 		}
 		
-		reqPendingAcceptance = new RequestPendingConsensus<>(acceptReq, majority);
-		if (reqPendingAcceptance.checkIfAccepted()) {
-			reqPendingAcceptance = null;
-			acceptProposal(acceptReq);
+		if (reqPendingPromise.isAccepted()) {
+			if (!proposalsToServe.isEmpty()) {
+				AcceptRequest acceptReq;
+				if (!abortedAcceptsToAttach.isEmpty()) {
+					acceptReq = abortedAcceptsToAttach.poll();
+				} else {
+					ProposalRequest proposalReq = proposalsToServe.poll();
+					acceptReq = new AcceptRequest(proposalReq.proposalId, proposalReq.command);	
+				}
+
+				reqPendingAcceptance = new RequestPendingConsensus<AcceptRequest>(acceptReq, majority);
+				for (ConnectionDetails connDetails: this.nodeConnections.values()) {
+					new Thread(new Runnable() {
+						public void run() {
+							try {
+								sendObjectToAddress(acceptReq, connDetails.serverIp, connDetails.serverPort);
+							} catch (Exception e) {
+								// Stop operation because the heartbeat should take care of socket severance							
+							}
+						} 
+					}).start();
+				}
+			}
 		}
-		
-		return;
 	}
 
 	@Override
-	public void acceptProposal(AcceptRequest acceptedProposal) {
-		updateLog.append(acceptedProposal);
+	public void acceptProposal(AcceptRequest acceptReq) {
+		lastAcceptedRequestNotForgotten = reqPendingAcceptance.getRequest();
+		updateLog.append(acceptReq);
+
+		try {
+			sendObjectToLeader(new AcceptedResponse());
+			lastAcceptedRequestNotForgotten = null;
+		} catch (Exception e) {
+						
+		}; 
+	}
+	
+	public void finalizeProposalAcceptance() {
+		if (reqPendingAcceptance.isAccepted()) {
+			updateLog.append(reqPendingAcceptance.getRequest());
+		}
+		if (!proposalsToServe.isEmpty()) {
+			requestAccept(null);
+		}
 	}
 
 	@Override
 	public void terminate() {
 		System.exit(0);
+	}
+	
+	public ServerSocket getServerSocket() {
+		return this.serverSocket;
+	}
+	
+	public ServerSocket getPaxosSocket() {
+		return this.paxosSocket;
 	}
 	
 	private boolean startServer() {
@@ -428,25 +473,24 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						while (in.available() != 0 || !clientSocket.isInputShutdown()) { 
 							Object packet = in.readObject();
 							
-							if (isPaxosLeader) {
+							if (packet instanceof JoinNetworkRequest) {
+								JoinNetworkResponse res = new JoinNetworkResponse(paxosLeaderIp, paxosLeaderPort);
+								out.writeObject(res);
+							} else if (isPaxosLeader) {
 								if (packet instanceof NodeIdRequest) {
 									NodeIdRequest req = (NodeIdRequest) packet;
 									int nodeId = getNodeId();
 									NodeIdResponse res;
 									if (nodeId == -1) {
-										res = new NodeIdResponse(nodeId, null);
+										res = new NodeIdResponse(nodeId, null, null);
 									} else {
 										nodeConnections.put(nodeId, req.connDetails);
-										res = new NodeIdResponse(nodeId, nodeConnections);
+										res = new NodeIdResponse(nodeId, nodeConnections, DistributedTable.getInstance().copyTable());
 									}
 									out.writeObject(res);
 									
 								}
-							} else if (packet instanceof JoinNetworkRequest) {
-								JoinNetworkResponse res = new JoinNetworkResponse(paxosLeaderIp, paxosLeaderPort);
-								out.writeObject(res);
-							}
-								
+							} 
 						}
 					}
 				} catch (Exception e) {
@@ -470,37 +514,35 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 						Socket clientSocket = paxosSocket.accept();
 						ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
 						ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
-						while (in.available() != 0) { 
-							// wait until package comes in
-							if (clientSocket.isInputShutdown()) { // Assuming client never hangs up for no reason
-								electLeader();
-							}
-						}
-						
 						Object packet = in.readObject();
 						
-						if (packet instanceof AcceptRequest) {
+						if (packet instanceof PrepareRequest) {
+							promiseTransaction((PrepareRequest) packet);
+						} else if (packet instanceof AcceptRequest) {
 							AcceptRequest acceptReq = (AcceptRequest) packet;
 							if (reqPendingAcceptance == null) {
 								reqPendingAcceptance = new RequestPendingConsensus<>(acceptReq, majority);
 							}
 							if (reqPendingAcceptance.requestsEqual(acceptReq)) {
 								reqPendingAcceptance.incrementAcks();
-								if (reqPendingAcceptance.checkIfAccepted()) {
+								if (reqPendingAcceptance.isAccepted()) {
 									reqPendingAcceptance = null;
 									acceptProposal(acceptReq);
 								}
 							} 
+						} else if (packet instanceof ElectionRequest) {
+							
 						} else if (isPaxosLeader) {
 							if (packet instanceof ProposalRequest) {
 								proposalsToServe.add((ProposalRequest) packet);
 								prepareTransaction((ProposalRequest) packet);
-							}
-						} else { //A paxos follower
-							if (packet instanceof PrepareRequest) {
-								promiseTransaction((PrepareRequest) packet);
+							} else if (packet instanceof PromiseResponse) {
+								requestAccept((PromiseResponse) packet);
+							} else if (packet instanceof AcceptedResponse) {
+								finalizeProposalAcceptance();
 							}
 						}
+			
 						
 						clientSocket.close();
 					}
@@ -512,14 +554,6 @@ public class DistributedNode implements DistributedNodeInterface, AcceptorsInter
 		
 		paxos.start();
 		return true;
-	}
-	
-	public ServerSocket getServerSocket() {
-		return this.serverSocket;
-	}
-	
-	public ServerSocket getPaxosSocket() {
-		return this.paxosSocket;
 	}
 	
 	private void sendObjectToLeader(Object packet) throws UnknownHostException, IOException {

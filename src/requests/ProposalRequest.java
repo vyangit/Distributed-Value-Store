@@ -15,4 +15,9 @@ public class ProposalRequest implements java.io.Serializable{
 		this.proposalId = new ProposalId(nodeId);
 		this.command = command;
 	}
+	
+	public ProposalRequest (ProposalId proposalId, AbstractDistributedCommand command) {
+		this.proposalId = proposalId;
+		this.command = command;
+	}
 }

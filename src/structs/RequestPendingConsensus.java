@@ -34,9 +34,13 @@ public class RequestPendingConsensus<T> {
 		return this.request.equals(request);
 	}
 	
-	public Boolean checkIfAccepted() {
+	public Boolean isAccepted() {
 		if (acks >= majority) return true;
 		if (nacks >= majority) return false;
 		return null;
+	}
+	
+	public Boolean isPending() {
+		return acks+nacks < majority;
 	}
 }
